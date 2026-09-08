@@ -33,15 +33,19 @@ def _enable_performance_logging(options) -> None:
 def _log_prefix(driver=None) -> str:
     """按当前浏览器实现返回注册日志前缀。
 
-    CloakBrowser 复用 Roxy 的页面操作函数；这些共享函数必须跟随实际 driver
-    输出 `[Cloak注册]`，避免 Cloak 流程里混入 `[Roxy注册]` 日志。
+    CloakBrowser / Chromix 复用 Roxy 的页面操作函数；这些共享函数必须跟随实际
+    driver 输出 `[Cloak注册]` / `[Chromix注册]`，避免混入 `[Roxy注册]` 日志。
     """
     try:
         explicit = str(getattr(driver, "_registration_log_prefix", "") or "").strip()
         if explicit:
             return explicit
         if driver is not None and driver.__class__.__name__ == "CloakSeleniumDriver":
-            return "[Cloak注册]"
+            try:
+                from core.cloakbrowser_driver import stealth_log_tag
+                return f"[{stealth_log_tag()}注册]"
+            except Exception:
+                return "[Cloak注册]"
     except Exception:
         pass
     return "[Roxy注册]"
@@ -1680,10 +1684,14 @@ def _click_passwordless_signup_if_present(driver) -> dict:
         return {"ok": False, "reason": f"{type(exc).__name__}: {exc}"}
 
 
-def _click_continue_with_password_if_present(driver) -> dict:
-    """在邮箱验证码页点击“使用密码继续”，进入 /create-account/password。"""
-    try:
-        result = driver.execute_script(r"""
+def _is_element_like(el) -> bool:
+    """判断 execute_script 返回值是否是可点击/可输入的页面元素。"""
+    if el is None or isinstance(el, (str, int, float, bool, dict, list, tuple)):
+        return False
+    return callable(getattr(el, "click", None)) or callable(getattr(el, "send_keys", None))
+
+
+_CONTINUE_WITH_PASSWORD_FINDER_JS = r"""
         const visible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
           && getComputedStyle(el).visibility !== 'hidden' && getComputedStyle(el).display !== 'none';
         const enabled = el => !el.disabled && String(el.getAttribute('aria-disabled') || '').toLowerCase() !== 'true';
@@ -1700,11 +1708,40 @@ def _click_continue_with_password_if_present(driver) -> dict:
           return (
             href.includes('/create-account/password') ||
             attrs.includes('/create-account/password') ||
-            attrs.includes("data-dd-action-name") ||
             text.includes('continuewithpassword') ||
-            text.includes('continuewithapassword')
+            text.includes('continuewithapassword') ||
+            text.includes('使用密码继续') ||
+            text.includes('使用密碼繼續') ||
+            text.includes('パスワードで続行') ||
+            text.includes('パスワードで続ける')
           );
         };
+"""
+
+
+def _click_continue_with_password_in_page(driver) -> dict:
+    """找不到可包装的按钮元素时，在页面内直接点击“使用密码继续”。"""
+    try:
+        return driver.execute_script(_CONTINUE_WITH_PASSWORD_FINDER_JS + r"""
+        const btn = candidates.find(isPasswordCreate);
+        if (!btn) return {ok:false, reason:'missing_continue_with_password'};
+        btn.scrollIntoView({block:'center'});
+        const href = btn.getAttribute('href') || '';
+        const text = (btn.textContent || '').trim().slice(0, 80);
+        try { btn.click(); } catch (e) {
+          if (href) window.location.href = href;
+          else throw e;
+        }
+        return {ok:true, reason:'clicked_continue_with_password_in_page', href, text};
+        """) or {"ok": False, "reason": "empty_result"}
+    except Exception as exc:
+        return {"ok": False, "reason": f"{type(exc).__name__}: {exc}"}
+
+
+def _click_continue_with_password_if_present(driver) -> dict:
+    """在邮箱验证码页点击“使用密码继续”，进入 /create-account/password。"""
+    try:
+        result = driver.execute_script(_CONTINUE_WITH_PASSWORD_FINDER_JS + r"""
         const btn = candidates.find(isPasswordCreate);
         if (!btn) return {ok:false, reason:'missing_continue_with_password'};
         btn.scrollIntoView({block:'center'});
@@ -1716,11 +1753,96 @@ def _click_continue_with_password_if_present(driver) -> dict:
           text: (btn.textContent || '').trim().slice(0, 80)
         };
         """) or {"ok": False, "reason": "empty_result"}
-        if result.get("ok") and result.get("button"):
+        if result.get("ok") and _is_element_like(result.get("button")):
             _human_click(driver, result.get("button"), label="continue_with_password")
             result["reason"] = "clicked_continue_with_password"
             result.pop("button", None)
+            return result
+        if result.get("ok"):
+            in_page = _click_continue_with_password_in_page(driver)
+            if in_page.get("ok"):
+                return in_page
         return result
+    except Exception as exc:
+        return {"ok": False, "reason": f"{type(exc).__name__}: {exc}"}
+
+
+def _fill_password_input_js(driver, password: str) -> dict:
+    """Cloak 解不出 input 元素时，在页面内用原生 setter 填写密码。"""
+    try:
+        return driver.execute_script(r"""
+        const password = String(arguments[0] || '');
+        const visible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
+          && getComputedStyle(el).visibility !== 'hidden' && getComputedStyle(el).display !== 'none'
+          && !el.disabled && !el.readOnly;
+        const input = [...document.querySelectorAll('input[type="password"],input[name*="password" i],input[autocomplete="new-password"]')]
+          .find(visible);
+        if (!input) return {ok:false, reason:'missing_password_input'};
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+        input.scrollIntoView({block:'center'});
+        input.focus();
+        if (setter) setter.call(input, password); else input.value = password;
+        try { input.dispatchEvent(new InputEvent('beforeinput', {bubbles:true, cancelable:true, inputType:'insertText', data:password})); } catch (_) {}
+        try { input.dispatchEvent(new InputEvent('input', {bubbles:true, inputType:'insertText', data:password})); } catch (_) {
+          input.dispatchEvent(new Event('input', {bubbles:true}));
+        }
+        input.dispatchEvent(new Event('change', {bubbles:true}));
+        return {ok:true, reason:'filled_password_js', length: password.length};
+        """, password) or {}
+    except Exception as exc:
+        return {"ok": False, "reason": f"{type(exc).__name__}: {exc}"}
+
+
+def _click_password_submit_in_page(driver) -> dict:
+    """Cloak 解不出 Continue 按钮时，在页面内直接点击提交。"""
+    try:
+        return driver.execute_script(r"""
+        const visible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
+          && getComputedStyle(el).visibility !== 'hidden' && getComputedStyle(el).display !== 'none';
+        const enabled = el => !!el && !el.disabled && String(el.getAttribute('aria-disabled') || '').toLowerCase() !== 'true';
+        const pass = [...document.querySelectorAll('input[type="password"],input[name*="password" i],input[autocomplete="new-password"]')]
+          .find(el => visible(el) && !el.disabled && !el.readOnly);
+        const form = pass ? pass.closest('form') : document.querySelector('form');
+        const scope = form || document;
+        const candidates = [...scope.querySelectorAll('button,input[type="submit"],[role="button"]')]
+          .filter(el => visible(el) && enabled(el));
+        const norm = s => String(s || '').replace(/\s+/g, '').toLowerCase();
+        const scored = candidates.map((el, idx) => {
+          const attrs = [
+            el.getAttribute('type'), el.getAttribute('data-dd-action-name'),
+            el.getAttribute('data-login-web-auth-control'), el.getAttribute('aria-label'),
+            el.getAttribute('name'), el.getAttribute('value'), el.textContent
+          ].join(' ').toLowerCase();
+          const text = norm(el.textContent || el.getAttribute('value') || '');
+          let score = 0;
+          if ((el.getAttribute('type') || '').toLowerCase() === 'submit') score += 80;
+          if ((el.getAttribute('data-dd-action-name') || '').toLowerCase() === 'continue') score += 90;
+          if (String(el.getAttribute('data-login-web-auth-control') || '').toLowerCase() === 'true') score += 70;
+          if (/continue|next|submit|create|続行/.test(attrs) || /continue|next|submit|create|続行/.test(text)) score += 50;
+          return {el, idx, score};
+        }).sort((a,b) => b.score - a.score || a.idx - b.idx);
+        const target = scored[0] && scored[0].el;
+        if (!target) {
+          if (form && typeof form.requestSubmit === 'function') {
+            form.requestSubmit();
+            return {ok:true, reason:'form_requestSubmit'};
+          }
+          return {ok:false, reason:'missing_enabled_submit'};
+        }
+        target.scrollIntoView({block:'center'});
+        try { target.click(); } catch (e) {
+          if (form && typeof form.requestSubmit === 'function') form.requestSubmit(target);
+          else if (form) form.submit();
+          else throw e;
+        }
+        return {
+          ok:true,
+          reason:'clicked_password_submit_in_page',
+          text: (target.textContent || target.getAttribute('value') || '').trim().slice(0, 80),
+          type: target.getAttribute('type') || '',
+          dd: target.getAttribute('data-dd-action-name') || ''
+        };
+        """) or {}
     except Exception as exc:
         return {"ok": False, "reason": f"{type(exc).__name__}: {exc}"}
 
@@ -1789,7 +1911,13 @@ def _fill_password_page_if_present(driver, email: str, timeout: int = 25) -> str
         """) or {}
         if not result.get('ok'):
             raise RuntimeError(f"密码页处理失败：{result} state={last}")
-        _human_type_text(driver, result.get("input"), password, clear=True)
+        password_input = result.get("input")
+        if _is_element_like(password_input):
+            _human_type_text(driver, password_input, password, clear=True)
+        else:
+            filled = _fill_password_input_js(driver, password)
+            if not filled.get("ok"):
+                raise RuntimeError(f"密码页填写失败：{filled} state={last}")
         # React/Auth0 会在 input/change 后异步校验密码强度并启用 Continue。
         # 之前输入完 0.4~1.4s 就点，偶发点在按钮还未真正可提交/事件未绑定完成时，页面无反应。
         human_delay("form", minimum=2.0, maximum=3.6)
@@ -1831,9 +1959,13 @@ def _fill_password_page_if_present(driver, email: str, timeout: int = 25) -> str
           ariaDisabled: target.getAttribute('aria-disabled') || ''
         };
         """) or {}
-        if not submit_result.get("ok") or not submit_result.get("button"):
-            raise RuntimeError(f"密码页找不到可点击的 Continue 按钮：{submit_result} state={_password_page_state(driver)}")
-        _human_click(driver, submit_result.get("button"), label="password_submit")
+        if submit_result.get("ok") and _is_element_like(submit_result.get("button")):
+            _human_click(driver, submit_result.get("button"), label="password_submit")
+        else:
+            clicked = _click_password_submit_in_page(driver)
+            if not clicked.get("ok"):
+                raise RuntimeError(f"密码页找不到可点击的 Continue 按钮：{submit_result or clicked} state={_password_page_state(driver)}")
+            submit_result = clicked
         logger.info("%s 已填写并点击密码页 Continue：detail=%s", _log_prefix(driver), {k: v for k, v in submit_result.items() if k != "button"})
         # 提交密码后通常进入邮箱验证码页，最多等一段时间。
         wait_end = time.time() + 20

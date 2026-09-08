@@ -260,6 +260,16 @@ class CloakSeleniumDriver:
         return first_el, cleaned
 
     @staticmethod
+    def _is_unserializable_js_error(exc: Exception) -> bool:
+        msg = str(exc).lower()
+        return any(token in msg for token in (
+            "cannot be converted to json",
+            "could not be converted to json",
+            "not json serializable",
+            "object could not be cloned",
+        ))
+
+    @staticmethod
     def _unwrap_js_result(page, handle: Any) -> Any:
         try:
             element = handle.as_element()
@@ -274,12 +284,55 @@ class CloakSeleniumDriver:
             if "Execution context was destroyed" in msg or "navigation" in msg.lower():
                 logger.info("[Cloak] JS 执行后页面发生跳转，忽略返回值读取失败：%s", msg[:160])
                 return {"ok": True, "reason": "navigation_after_script"}
+            if CloakSeleniumDriver._is_unserializable_js_error(exc):
+                try:
+                    return CloakSeleniumDriver._unwrap_nested_js_value(page, handle)
+                except Exception as nested_exc:
+                    logger.debug("[Cloak] 嵌套 JS 结果解包失败：%s", nested_exc)
+                    raise exc from nested_exc
             raise
         finally:
             try:
                 handle.dispose()
             except Exception:
                 pass
+
+    @staticmethod
+    def _unwrap_nested_js_value(page, handle: Any) -> Any:
+        """把含 DOM 节点的 JS 对象还原成 CloakElement，对齐 Selenium execute_script。"""
+        kind = handle.evaluate("""v => {
+          if (v === undefined || v === null) return {t:'null'};
+          if (typeof Node !== 'undefined' && v instanceof Node) return {t:'node'};
+          if (Array.isArray(v)) return {t:'array', n:v.length};
+          if (typeof v === 'object') return {t:'object', keys: Object.keys(v)};
+          return {t:'json'};
+        }""")
+        t = str((kind or {}).get("t") or "")
+        if t == "node":
+            element = None
+            try:
+                element = handle.as_element()
+            except Exception:
+                element = None
+            return CloakElement(page, handle=element or handle)
+        if t == "array":
+            out = []
+            for i in range(int((kind or {}).get("n") or 0)):
+                child = handle.evaluate_handle("(v, i) => v[i]", i)
+                out.append(CloakSeleniumDriver._unwrap_js_result(page, child))
+            return out
+        if t == "object":
+            out = {}
+            for key in (kind or {}).get("keys") or []:
+                child = handle.evaluate_handle("(v, k) => v[k]", key)
+                out[str(key)] = CloakSeleniumDriver._unwrap_js_result(page, child)
+            return out
+        if t in ("null", "json"):
+            try:
+                return handle.json_value()
+            except Exception:
+                return None
+        raise RuntimeError(f"unsupported js result kind: {kind}")
 
     def _evaluate(self, script: str, args: tuple[Any, ...], async_mode: bool) -> Any:
         first_el, serial_args = self._serialize_args(args)
