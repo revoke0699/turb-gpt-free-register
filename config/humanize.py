@@ -13,9 +13,9 @@ ENABLE_HUMANIZE_DELAY = True
 # 延迟倍率；批量跑得太慢时可调小到 0.5。
 HUMANIZE_DELAY_FACTOR = 1.0
 
-# Roxy/Cloak 浏览器自动化动作随机化。开启后会使用更接近人工的点击/输入：
+# Roxy/Cloak 浏览器自动化动作随机化。开启后会使用更接近人工的点击：
 # - 点击前轻微滚动、移动到元素内随机位置、短暂停顿再点击
-# - 输入按字符/小段随机节奏，不再一次性整串 send_keys
+# - 输入一次性填入完整文本（Cloak/Chromix 的 fill 不能逐字覆盖）
 # - 页面打开后做少量随机停顿/鼠标移动
 ENABLE_HUMANIZE_BROWSER_ACTIONS = True
 

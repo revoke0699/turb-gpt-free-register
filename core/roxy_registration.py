@@ -327,56 +327,34 @@ def _human_click(driver, el, *, label: str = "") -> None:
 
 
 def _human_type_text(driver, el, value: str, *, clear: bool = True) -> None:
-    """按字符/小段输入，触发真实 key events；失败时回退 JS setter。"""
-    if not _browser_actions_enabled():
+    """一次性填入完整文本。
+
+    Cloak/Chromix 的 send_keys 走 Playwright fill()，会覆盖整个输入框。
+    逐字调用会把邮箱/密码冲成最后一两个字符。
+    """
+    try:
+        if _browser_actions_enabled():
+            _human_scroll_to(driver, el)
+            try:
+                _human_click(driver, el, label="input_focus")
+            except Exception:
+                driver.execute_script("arguments[0].focus();", el)
         if clear:
             try:
                 el.clear()
             except Exception:
                 pass
-        el.send_keys(value)
-        return
-    try:
-        _human_scroll_to(driver, el)
+        el.send_keys(str(value))
         try:
-            _human_click(driver, el, label="input_focus")
+            driver.execute_script(
+                "arguments[0].dispatchEvent(new Event('input', {bubbles:true}));"
+                "arguments[0].dispatchEvent(new Event('change', {bubbles:true}));",
+                el,
+            )
         except Exception:
-            driver.execute_script("arguments[0].focus();", el)
-        if clear:
-            from selenium.webdriver.common.keys import Keys
-            mod = Keys.COMMAND
-            try:
-                import platform
-                if platform.system().lower() != "darwin":
-                    mod = Keys.CONTROL
-            except Exception:
-                pass
-            try:
-                el.send_keys(mod, "a")
-                time.sleep(random.uniform(0.04, 0.16))
-                el.send_keys(Keys.BACKSPACE)
-            except Exception:
-                try:
-                    el.clear()
-                except Exception:
-                    pass
-        text = str(value)
-        i = 0
-        while i < len(text):
-            # 邮箱/密码整体仍逐字符，但偶尔 2 字符一组，节奏更自然。
-            step = 2 if random.random() < 0.12 and i + 1 < len(text) else 1
-            el.send_keys(text[i:i + step])
-            i += step
-            human_delay("keystroke")
-            if i < len(text) and random.random() < 0.08:
-                human_delay("typing_pause")
-        driver.execute_script(
-            "arguments[0].dispatchEvent(new Event('input', {bubbles:true}));"
-            "arguments[0].dispatchEvent(new Event('change', {bubbles:true}));",
-            el,
-        )
+            pass
     except Exception as exc:
-        logger.debug("%s 人工化输入失败，回退 JS setter err=%s", _log_prefix(driver), exc)
+        logger.debug("%s 输入失败，回退 JS setter err=%s", _log_prefix(driver), exc)
         _set_element_value(driver, el, value)
 
 

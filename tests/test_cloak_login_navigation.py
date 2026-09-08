@@ -94,5 +94,39 @@ class CloakLoginNavigationTests(unittest.TestCase):
         self.assertNotIn("install_playwright(driver.context)", src)
 
 
+class _RecordingElement:
+    def __init__(self):
+        self.calls = []
+
+    def clear(self):
+        self.calls.append(("clear",))
+
+    def send_keys(self, *args):
+        self.calls.append(("send_keys", tuple(str(a) for a in args)))
+
+
+class _ScriptDriver:
+    def execute_script(self, script, *args):
+        return None
+
+
+class HumanTypeTextTests(unittest.TestCase):
+    def test_human_type_text_sends_full_value_once(self):
+        from core.roxy_registration import _human_type_text
+
+        el = _RecordingElement()
+        with patch("core.roxy_registration._browser_actions_enabled", return_value=True), \
+             patch("core.roxy_registration._human_scroll_to"), \
+             patch("core.roxy_registration._human_click"), \
+             patch("core.roxy_registration.human_delay"):
+            _human_type_text(_ScriptDriver(), el, "user@example.com", clear=True)
+
+        typed = [args for name, args in ((c[0], c[1]) for c in el.calls if c[0] == "send_keys")]
+        self.assertIn(("user@example.com",), typed)
+        self.assertEqual(typed.count(("user@example.com",)), 1)
+        self.assertFalse(any(len(args) == 1 and len(args[0]) == 1 for args in typed))
+
+
 if __name__ == "__main__":
     unittest.main()
+

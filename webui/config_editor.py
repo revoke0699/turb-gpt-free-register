@@ -294,7 +294,7 @@ EDITABLE_FIELDS = [
     },
     {
         "key": "ENABLE_HUMANIZE_BROWSER_ACTIONS", "file": "humanize.py", "type": "bool", "group": "人工节奏",
-        "label": "浏览器动作随机化", "help": "Roxy/Cloak 点击、输入、页面观察使用随机鼠标落点和逐字输入，降低机械操作痕迹",
+        "label": "浏览器动作随机化", "help": "Roxy/Cloak 点击和页面观察使用随机鼠标落点；输入一次性填入完整文本",
     },
     # ---- 邮箱 / OTP ----
     {
