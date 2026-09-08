@@ -519,7 +519,7 @@ EDITABLE_FIELDS = [
     # ---- 代理池 ----
     {
         "key": "PROXY_POOL", "file": "proxy.py", "type": "list_str_multiline", "group": "代理池",
-        "label": "代理池(每行一个)", "help": "每行一个代理 URL，留空行会被忽略；为空则不使用代理",
+        "label": "代理池(每行一个)", "help": "每行一个代理 URL，留空行会被忽略；为空则不使用代理。URL 中的 [task_任务id] 会替换为当前任务 ID。Resin 模式开启时此列表不生效",
         "recommended_links": [
             {
                 "label": "IPRocket 家宽",
@@ -532,6 +532,15 @@ EDITABLE_FIELDS = [
                 "description": "Roxy 合作伙伴高质量家宽，注册可享 15% 优惠",
             },
         ],
+    },
+    {
+        "key": "PROXY_RESIN_MODE", "file": "proxy.py", "type": "bool", "group": "代理池",
+        "label": "Resin模式", "help": "开启后不再从代理池随机抽，改用下方模板链接；每次任务把 [task_任务id] 替换为当前任务 ID，同一任务全程粘性 IP",
+    },
+    {
+        "key": "PROXY_RESIN_TEMPLATE", "file": "proxy.py", "type": "str", "group": "代理池",
+        "label": "Resin代理链接", "help": "填写含 [task_任务id] 的代理 URL，例如 http://openai.[task_任务id]:密码@host:port。含认证信息，仅保存到 .env",
+        "storage": "env", "secret": True,
     },
     {
         "key": "PLAN_CHECK_PROXY_MODE", "file": "proxy.py", "type": "str", "group": "代理池",
