@@ -189,6 +189,12 @@ class CloakSeleniumDriver:
 
     def quit(self) -> None:
         try:
+            if self._cdp_client is not None:
+                self._cdp_client.detach()
+        except Exception:
+            pass
+        self._cdp_client = None
+        try:
             if self.context is not None:
                 self.context.close()
         except Exception:

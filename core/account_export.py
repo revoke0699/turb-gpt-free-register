@@ -53,7 +53,21 @@ def post_register_dwell(email: str, *, label: str = "注册后") -> None:
     if seconds <= 0:
         return
     logger.info("[%s] 注册成功后随机停留 %.1fs：%s", label, seconds, email)
-    time.sleep(seconds)
+    end = time.time() + seconds
+    while True:
+        remaining = end - time.time()
+        if remaining <= 0:
+            break
+        try:
+            from core.registration_service import is_stop_requested
+
+            if is_stop_requested():
+                logger.info("[%s] 停留被手动停止打断，继续收尾：%s", label, email)
+                break
+        except Exception:
+            pass
+        time.sleep(min(1.0, remaining))
+    logger.info("[%s] 停留结束，开始收尾：%s", label, email)
 
 
 def _account_material_line(email: str, row: dict | None = None) -> str:

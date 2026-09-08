@@ -92,6 +92,7 @@ class CloakLoginNavigationTests(unittest.TestCase):
         self.assertIn("install_selenium(driver)", src)
         self.assertNotIn('driver.get("https://chatgpt.com/auth/login")', src)
         self.assertNotIn("install_playwright(driver.context)", src)
+        self.assertIn("结束流量统计失败，继续保存账号", src)
 
 
 class _RecordingElement:

@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from core.cloakbrowser_driver import (
+    CloakSeleniumDriver,
     _cloak_supports_http_proxy_inline_auth,
     import_stealth_browser,
     resolve_stealth_engine,
@@ -50,6 +51,28 @@ class ChromixDriverTests(unittest.TestCase):
         self.assertIn("chromix", help_text.lower())
         html = Path("webui/templates/index.html").read_text(encoding="utf-8")
         self.assertIn("value: 'chromix'", html)
+
+    def test_quit_detaches_cdp_session_before_close(self):
+        class _Handle:
+            def __init__(self):
+                self.calls = []
+
+            def detach(self):
+                self.calls.append("detach")
+
+            def close(self):
+                self.calls.append("close")
+
+        cdp = _Handle()
+        context = _Handle()
+        browser = _Handle()
+        driver = CloakSeleniumDriver(browser=browser, context=context, page=object())
+        driver._cdp_client = cdp
+        driver.quit()
+        self.assertEqual(cdp.calls, ["detach"])
+        self.assertEqual(context.calls, ["close"])
+        self.assertEqual(browser.calls, ["close"])
+        self.assertIsNone(driver._cdp_client)
 
 
 if __name__ == "__main__":

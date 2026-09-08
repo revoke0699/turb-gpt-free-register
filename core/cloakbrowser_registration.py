@@ -174,11 +174,18 @@ def run_cloak_registration(
             codex_result = {"status": "failed", "ok": False, "message": f"{type(exc).__name__}: {str(exc)[:180]}"}
 
         # 统计注册浏览器关闭前的完整会话；注册后停留期间的网络请求也计入。
+        # 流量统计失败不能挡住已经拿到 accessToken 的账号落库。
         post_register_dwell(email, label=f"{tag}注册")
-        if traffic_tracker is not None:
-            network_traffic = traffic_tracker.stop()
-        if data_saver is not None:
-            data_saver.stop()
+        try:
+            if traffic_tracker is not None:
+                network_traffic = traffic_tracker.stop()
+        except Exception as exc:
+            logger.warning("[%s注册] 结束流量统计失败，继续保存账号：%s: %s", tag, type(exc).__name__, str(exc)[:180])
+        try:
+            if data_saver is not None:
+                data_saver.stop()
+        except Exception as exc:
+            logger.warning("[%s注册] 关闭省流量拦截失败，继续保存账号：%s: %s", tag, type(exc).__name__, str(exc)[:180])
         account_id = save_account_data(
             email=email,
             access_token=access_token,
@@ -239,6 +246,7 @@ def run_cloak_registration(
             data_saver.stop()
         if driver and not bool(_cfg.CLOAK_KEEP_BROWSER_OPEN):
             try:
+                logger.info("[%s注册] 正在关闭浏览器", tag)
                 driver.quit()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("[%s注册] 关闭浏览器失败：%s: %s", tag, type(exc).__name__, str(exc)[:180])

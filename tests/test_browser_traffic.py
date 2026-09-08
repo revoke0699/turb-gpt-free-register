@@ -70,6 +70,27 @@ class _FailedRequest(_Request):
         raise AssertionError("Request.response() must not be called for requestfailed")
 
 
+class _InFlightRequest(_Request):
+    """ChatGPT 登录后常见的未完成请求（SSE/长连接）。sizes()/response() 会同步死等。"""
+
+    resource_type = "eventsource"
+    url = "https://chatgpt.com/backend-api/never-ends"
+    headers = {"accept": "text/event-stream"}
+    post_data = None
+
+    def __init__(self):
+        self.sizes_called = 0
+        self.response_called = 0
+
+    def sizes(self):
+        self.sizes_called += 1
+        raise AssertionError("Request.sizes() must not be called for unfinished requests")
+
+    def response(self):
+        self.response_called += 1
+        raise AssertionError("Request.response() must not be called for unfinished requests")
+
+
 class _WebSocket(_Emitter):
     pass
 
@@ -324,6 +345,24 @@ class BrowserTrafficTests(unittest.TestCase):
         self.assertEqual(result["completed_request_count"], 0)
         self.assertEqual(result["http_download_bytes"], 0)
         self.assertGreater(result["http_upload_bytes"], 0)
+        self.assertEqual(result["detail_recorded_count"], 1)
+
+    def test_playwright_unfinished_request_does_not_wait_for_sizes(self):
+        context = _Emitter()
+        context.pages = []
+        with patch("core.browser_traffic._browser_cfg.BROWSER_TRAFFIC_DETAIL_LOG", True):
+            tracker = PlaywrightTrafficTracker(context, label="unfinished")
+            request = _InFlightRequest()
+            context.emit("request", request)
+            result = tracker.stop()
+
+        self.assertEqual(request.sizes_called, 0)
+        self.assertEqual(request.response_called, 0)
+        self.assertEqual(result["request_count"], 1)
+        self.assertEqual(result["unfinished_request_count"], 1)
+        self.assertEqual(result["completed_request_count"], 0)
+        self.assertEqual(result["failed_request_count"], 0)
+        self.assertEqual(result["http_download_bytes"], 0)
         self.assertEqual(result["detail_recorded_count"], 1)
 
     def test_selenium_logs_status_cache_failure_and_unfinished_details(self):
