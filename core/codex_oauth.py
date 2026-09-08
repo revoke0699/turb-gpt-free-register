@@ -1366,7 +1366,7 @@ def run_codex_oauth(
         if oauth_driver in ("skyvern", "sv"):
             from core.skyvern_codex_oauth import run_skyvern_codex_oauth
             return run_skyvern_codex_oauth(email, otp_provider=otp_provider, proxy=proxy, force=True)
-        if oauth_driver in ("cloak", "cloakbrowser"):
+        if oauth_driver in ("cloak", "cloakbrowser", "chromix"):
             from config import cloakbrowser as _cloak_cfg
             from core.cloakbrowser_driver import build_cloak_driver
             from core.roxy_codex_oauth import run_roxy_codex_oauth

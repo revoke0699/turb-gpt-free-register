@@ -12,7 +12,7 @@ from config import twofa as _twofa_cfg
 from core.account_export import save_account_data, post_register_dwell
 from core.browser_data_saver import BrowserDataSaver
 from core.browser_traffic import PlaywrightTrafficTracker
-from core.cloakbrowser_driver import build_cloak_driver
+from core.cloakbrowser_driver import build_cloak_driver, stealth_log_tag
 from core.email_provider import acquire_email_after_input, wait_for_otp, resolve_email_source
 from core.humanize import delay as human_delay
 
@@ -21,6 +21,7 @@ from core.roxy_registration import (  # noqa: F401
     _maybe_accept, _submit_email_and_wait_next, _fill_password_page_if_present,
     _clear_otp_inputs, _type_otp, _click_continue, _wait_after_email_otp_submit,
     _click_resend_email_otp, _complete_profile_page, _fetch_chatgpt_session, _check_manual_stop,
+    _safe_get,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,23 +44,33 @@ def run_cloak_registration(
     traffic_tracker: PlaywrightTrafficTracker | None = None
     data_saver: BrowserDataSaver | None = None
     network_traffic: dict | None = None
+    tag = stealth_log_tag()
     try:
         driver, opened = build_cloak_driver(proxy=proxy)
         try:
-            traffic_tracker = PlaywrightTrafficTracker(driver.context, label="Cloak")
+            traffic_tracker = PlaywrightTrafficTracker(driver.context, label=tag)
         except Exception as exc:
             # 统计失败不应影响注册主流程。
-            logger.warning("[Cloak注册] 初始化浏览器流量统计失败，继续注册：%s: %s", type(exc).__name__, str(exc)[:180])
-        data_saver = BrowserDataSaver(label="Cloak")
+            logger.warning("[%s注册] 初始化浏览器流量统计失败，继续注册：%s: %s", tag, type(exc).__name__, str(exc)[:180])
+        data_saver = BrowserDataSaver(label=tag)
         if traffic_tracker is not None:
             traffic_tracker.attach_data_saver(data_saver)
-        data_saver.install_playwright(driver.context)
-        logger.info("[Cloak注册] 开始：%s，profile=%s", email, opened.profile_id)
+        # Cloak 的 HTTP 代理鉴权走 Playwright Fetch 拦截器；再叠加 context.route
+        # 拦截所有请求时，chatgpt.com 导航可能一直不返回。省流量改用 CDP URL 拦截。
+        data_saver.install_selenium(driver)
+        logger.info("[%s注册] 开始：%s，profile=%s", tag, email, opened.profile_id)
 
         otp_after_ts = time.time()
-        logger.info("[Cloak注册] 打开登录页：https://chatgpt.com/auth/login")
-        driver.get("https://chatgpt.com/auth/login")
+        logger.info("[%s注册] 打开登录页：https://chatgpt.com/auth/login", tag)
+        _safe_get(
+            driver,
+            "https://chatgpt.com/auth/login",
+            timeout=min(45, int(getattr(_cfg, "CLOAK_SELENIUM_TIMEOUT", 90) or 90)),
+            attempts=2,
+            accept_hosts=("chatgpt.com", "auth.openai.com"),
+        )
         human_delay("navigate")
+        logger.info("[%s注册] 登录页加载完成，准备填写邮箱", tag)
         _maybe_accept(driver)
         _check_manual_stop()
 
@@ -163,7 +174,7 @@ def run_cloak_registration(
             codex_result = {"status": "failed", "ok": False, "message": f"{type(exc).__name__}: {str(exc)[:180]}"}
 
         # 统计注册浏览器关闭前的完整会话；注册后停留期间的网络请求也计入。
-        post_register_dwell(email, label="Cloak注册")
+        post_register_dwell(email, label=f"{tag}注册")
         if traffic_tracker is not None:
             network_traffic = traffic_tracker.stop()
         if data_saver is not None:
@@ -204,12 +215,12 @@ def run_cloak_registration(
                 pass
         if data_saver is not None:
             data_saver.stop()
-        logger.error("[Cloak注册] 失败：%s: %s", type(exc).__name__, exc)
-        logger.debug("[Cloak注册] 失败详情", exc_info=True)
+        logger.error("[%s注册] 失败：%s: %s", tag, type(exc).__name__, exc)
+        logger.debug("[%s注册] 失败详情", tag, exc_info=True)
         try:
             if email:
                 from core.email_provider import release_email
-                release_email(email, status="failed" if create_acknowledged else "available", note=f"Cloak注册失败: {str(exc)[:180]}")
+                release_email(email, status="failed" if create_acknowledged else "available", note=f"{tag}注册失败: {str(exc)[:180]}")
         except Exception:
             pass
         return {

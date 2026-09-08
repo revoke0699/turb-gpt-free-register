@@ -124,14 +124,38 @@ def _wait(driver, timeout: int | None = None):
     return WebDriverWait(driver, timeout or int(_cfg.ROXY_SELENIUM_TIMEOUT))
 
 
+def _is_retryable_navigation_error(exc: BaseException) -> bool:
+    """判断页面跳转失败是否值得重试。
+
+    Cloak 走 Playwright，抛的是 `Error: Page.goto: net::ERR_*` / TimeoutError，
+    不是 Selenium 的 WebDriverException；两者都要覆盖。
+    """
+    from selenium.common.exceptions import TimeoutException, WebDriverException
+
+    if isinstance(exc, (TimeoutException, TimeoutError, WebDriverException)):
+        return True
+    msg = str(exc) or ""
+    if "net::" in msg or "Page.goto" in msg or "timeout" in msg.lower():
+        return True
+    return type(exc).__name__ in {"Error", "TimeoutError", "TargetClosedError"}
+
+
+def _is_navigation_timeout(exc: BaseException) -> bool:
+    from selenium.common.exceptions import TimeoutException
+
+    if isinstance(exc, (TimeoutException, TimeoutError)):
+        return True
+    msg = str(exc) or ""
+    return "timeout" in type(exc).__name__.lower() or "timeout" in msg.lower()
+
+
 def _safe_get(driver, url: str, *, timeout: int = 45, attempts: int = 2, accept_hosts: tuple[str, ...] = ()) -> None:
     """带容错的页面跳转。
 
     Roxy/Chrome 150 偶发 `Timed out receiving message from renderer`，实际页面可能已经可用。
     这里超时后先 `window.stop()`，只要当前 URL/DOM 已进入目标页就继续；否则重试一次。
+    Cloak/Playwright 的 `net::ERR_CONNECTION_RESET` 等导航错误同样重试。
     """
-    from selenium.common.exceptions import TimeoutException, WebDriverException
-
     last_exc: Exception | None = None
     old_timeout = int(getattr(_cfg, "ROXY_SELENIUM_TIMEOUT", 90) or 90)
     hosts = tuple(h.lower() for h in (accept_hosts or ()))
@@ -144,43 +168,45 @@ def _safe_get(driver, url: str, *, timeout: int = 45, attempts: int = 2, accept_
                 pass
             driver.get(url)
             return
-        except TimeoutException as exc:
+        except Exception as exc:
+            if not _is_retryable_navigation_error(exc):
+                raise
             last_exc = exc
-            logger.warning(
-                "%s 页面加载超时，尝试停止加载后检查 DOM：url=%s attempt=%s/%s error=%s",
-                _log_prefix(driver), url, attempt, attempts, str(exc).splitlines()[0] if str(exc) else "TimeoutException",
-            )
-            try:
-                driver.execute_script("window.stop();")
-            except Exception:
-                pass
-            time.sleep(1.0)
-            try:
-                current = str(driver.current_url or "").lower()
-            except Exception:
-                current = ""
-            try:
-                ready = str(driver.execute_script("return document.readyState || ''") or "")
-                has_body = bool(driver.execute_script("return !!document.body"))
-            except Exception:
-                ready = ""
-                has_body = False
-            target_ok = any(h in current for h in hosts) if hosts else (url.split("/", 3)[2].lower() in current)
-            if target_ok and has_body:
-                logger.info(
-                    "%s 页面加载虽超时但 DOM 可用，继续流程：current=%s readyState=%s",
-                    _log_prefix(driver), current[:180], ready or "-",
+            if _is_navigation_timeout(exc):
+                logger.warning(
+                    "%s 页面加载超时，尝试停止加载后检查 DOM：url=%s attempt=%s/%s error=%s",
+                    _log_prefix(driver), url, attempt, attempts, str(exc).splitlines()[0] if str(exc) else type(exc).__name__,
                 )
-                return
-            if attempt < attempts:
                 try:
-                    driver.get("about:blank")
+                    driver.execute_script("window.stop();")
                 except Exception:
                     pass
-                time.sleep(1.5 * attempt)
-                continue
-        except WebDriverException as exc:
-            last_exc = exc
+                time.sleep(1.0)
+                try:
+                    current = str(driver.current_url or "").lower()
+                except Exception:
+                    current = ""
+                try:
+                    ready = str(driver.execute_script("return document.readyState || ''") or "")
+                    has_body = bool(driver.execute_script("return !!document.body"))
+                except Exception:
+                    ready = ""
+                    has_body = False
+                target_ok = any(h in current for h in hosts) if hosts else (url.split("/", 3)[2].lower() in current)
+                if target_ok and has_body:
+                    logger.info(
+                        "%s 页面加载虽超时但 DOM 可用，继续流程：current=%s readyState=%s",
+                        _log_prefix(driver), current[:180], ready or "-",
+                    )
+                    return
+                if attempt < attempts:
+                    try:
+                        driver.get("about:blank")
+                    except Exception:
+                        pass
+                    time.sleep(1.5 * attempt)
+                    continue
+                raise
             if attempt < attempts:
                 logger.warning("%s 页面跳转失败，准备重试：url=%s attempt=%s/%s error=%s", _log_prefix(driver), url, attempt, attempts, exc)
                 time.sleep(1.5 * attempt)

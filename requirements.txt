@@ -7,6 +7,7 @@ selenium>=4.20.0
 
 cryptography>=41
 cloakbrowser[geoip]>=0.4.10
+# Chromix 仅 Windows x64 正式包：pip install chromix
 playwright>=1.49.0
 python-dotenv>=1.0.0
 playwright-stealth>=2.0.3

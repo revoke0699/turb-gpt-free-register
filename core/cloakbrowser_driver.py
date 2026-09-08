@@ -131,6 +131,7 @@ class CloakSeleniumDriver:
         self.context = context
         self.page = page
         self._page_load_timeout_ms = int(getattr(_cfg, "CLOAK_SELENIUM_TIMEOUT", 90) or 90) * 1000
+        self._cdp_client = None
         self.switch_to = _SwitchTo(self)
 
     @property
@@ -173,6 +174,9 @@ class CloakSeleniumDriver:
             self.page.set_default_timeout(self._page_load_timeout_ms)
         except Exception:
             pass
+
+    def set_script_timeout(self, seconds: int) -> None:
+        return None
 
     def get(self, url: str) -> None:
         self.page.goto(url, wait_until="domcontentloaded", timeout=self._page_load_timeout_ms)
@@ -222,12 +226,12 @@ class CloakSeleniumDriver:
 
     def execute_cdp_cmd(self, cmd: str, params: dict | None = None) -> Any:
         params = params or {}
-        try:
-            client = self.context.new_cdp_session(self.page) if self.context is not None else self.page.context.new_cdp_session(self.page)
-            return client.send(cmd, params)
-        except Exception as exc:
-            logger.debug("[Cloak] CDP 命令失败 %s: %s", cmd, exc)
-            return None
+        if self._cdp_client is None:
+            if self.context is not None:
+                self._cdp_client = self.context.new_cdp_session(self.page)
+            else:
+                self._cdp_client = self.page.context.new_cdp_session(self.page)
+        return self._cdp_client.send(cmd, params)
 
     def _serialize_args(self, args: tuple[Any, ...]) -> tuple[CloakElement | None, list[Any]]:
         """拆分 Selenium 脚本参数。
@@ -316,11 +320,79 @@ class CloakSeleniumDriver:
         return self._unwrap_js_result(self.page, handle)
 
 
+def resolve_stealth_engine() -> str:
+    """返回当前本地指纹内核：cloakbrowser 或 chromix。"""
+    try:
+        from config import roxybrowser as _roxy
+        driver = str(getattr(_roxy, "REGISTRATION_DRIVER", "") or "").strip().lower()
+    except Exception:
+        driver = ""
+    if driver in {"chromix"}:
+        return "chromix"
+    return "cloakbrowser"
+
+
+def stealth_log_tag() -> str:
+    return "Chromix" if resolve_stealth_engine() == "chromix" else "Cloak"
+
+
+def import_stealth_browser() -> tuple[Any, Any, str]:
+    """按当前注册驱动导入 CloakBrowser 或 Chromix 的 launch API。"""
+    engine = resolve_stealth_engine()
+    if engine == "chromix":
+        try:
+            from chromix import launch, launch_persistent_context
+        except ImportError as exc:
+            raise RuntimeError("未安装 chromix，请在 Windows 上执行：pip install chromix") from exc
+        return launch, launch_persistent_context, "chromix"
+    try:
+        from cloakbrowser import launch, launch_persistent_context
+    except ImportError as exc:
+        raise RuntimeError("未安装 cloakbrowser，请执行：pip install cloakbrowser") from exc
+    return launch, launch_persistent_context, "cloakbrowser"
+
+
 def _normalize_proxy(proxy: str | None) -> str | None:
     proxy = str(proxy or "").strip()
     if not proxy:
         return None
     return proxy.replace("socks5h://", "socks5://")
+
+
+def _cloak_supports_http_proxy_inline_auth() -> bool:
+    """当前内核是否支持 --proxy-server=http://user:pass@host。"""
+    if resolve_stealth_engine() == "chromix":
+        # Chromix 当前发布包是 Chromium 152，高于 Cloak 免费 145 的 inline-auth 门槛。
+        return True
+    try:
+        from cloakbrowser.config import binary_supports_http_proxy_inline_auth
+        return bool(binary_supports_http_proxy_inline_auth(
+            license_key=str(getattr(_cfg, "CLOAK_LICENSE_KEY", "") or "").strip() or None,
+        ))
+    except Exception:
+        return False
+
+
+def adapt_cloak_proxy(proxy: str | None) -> str | None:
+    """规范化 Cloak 代理 URL，不改协议。
+
+    免费 macOS Cloak 145 不能解析 ``--proxy-server`` 里的 ``user:pass@``。
+    HTTP 带账密会走 Playwright 鉴权；SOCKS5 带账密会被内核直接判为
+    ``ERR_NO_SUPPORTED_PROXIES``，这里只打警告，不擅自改成另一种协议。
+    """
+    from urllib.parse import urlparse
+
+    proxy = _normalize_proxy(proxy)
+    if not proxy:
+        return None
+    parsed = urlparse(proxy)
+    scheme = str(parsed.scheme or "").lower()
+    if scheme in {"socks5", "socks"} and parsed.username and not _cloak_supports_http_proxy_inline_auth():
+        logger.warning(
+            "[Cloak] 当前内核不能解析 socks5://user:pass@host，浏览器会报 ERR_NO_SUPPORTED_PROXIES。"
+            "请改用 http://user:pass@host，或升级到支持原生代理账密的 Cloak 内核。"
+        )
+    return proxy
 
 
 def _detect_cloak_exit_geo(proxy_url: str | None = None) -> dict:
@@ -405,19 +477,17 @@ def build_cloak_driver(proxy: str | None = None) -> tuple[CloakSeleniumDriver, C
             proxy = pick_proxy()
         except Exception:
             proxy = None
-    try:
-        from cloakbrowser import launch, launch_persistent_context
-    except ImportError as exc:
-        raise RuntimeError("未安装 cloakbrowser，请执行：pip install cloakbrowser") from exc
+    launch, launch_persistent_context, engine = import_stealth_browser()
+    log_tag = stealth_log_tag()
 
     launch_args = list(getattr(_cfg, "CLOAK_EXTRA_ARGS", []) or [])
     seed = str(getattr(_cfg, "CLOAK_FINGERPRINT_SEED", "") or "").strip()
     if seed:
         launch_args.append(f"--fingerprint={seed}")
 
-    proxy_url = _normalize_proxy(proxy) if bool(getattr(_cfg, "CLOAK_USE_PROXY", True)) else None
+    proxy_url = adapt_cloak_proxy(proxy) if bool(getattr(_cfg, "CLOAK_USE_PROXY", True)) else None
     locale_opts = _build_cloak_locale_options(proxy_url)
-    # geoip=True 交给 CloakBrowser 根据当前出口 IP 自动匹配 timezone/locale/WebRTC。
+    # geoip=True 交给内核根据当前出口 IP 自动匹配 timezone/locale/WebRTC。
     # 之前只有显式 proxy_url 时才开启；如果用户走系统代理/VPN/透明代理，代码层面
     # 看不到 proxy_url，会误关 geoip，导致语言/时区不跟随出口。这里改为完全尊重配置。
     opts = {
@@ -434,12 +504,13 @@ def build_cloak_driver(proxy: str | None = None) -> tuple[CloakSeleniumDriver, C
     if launch_args:
         opts["args"] = launch_args
     license_key = str(getattr(_cfg, "CLOAK_LICENSE_KEY", "") or "").strip()
-    if license_key:
+    if license_key and engine != "chromix":
         opts["license_key"] = license_key
 
     user_data_dir = str(getattr(_cfg, "CLOAK_USER_DATA_DIR", "") or "").strip()
     logger.info(
-        "[Cloak] 启动 CloakBrowser：headless=%s humanize=%s geoip=%s proxy=%s locale=%s timezone=%s accept_language=%s persistent=%s",
+        "[%s] 启动 %s：headless=%s humanize=%s geoip=%s proxy=%s locale=%s timezone=%s accept_language=%s persistent=%s",
+        log_tag, "Chromix" if engine == "chromix" else "CloakBrowser",
         opts.get("headless"), opts.get("humanize"), opts.get("geoip"),
         proxy_url or "无", opts.get("locale") or "自动/默认", opts.get("timezone") or "自动/默认",
         locale_opts.get("accept_language") or "自动/默认", bool(user_data_dir),
@@ -464,7 +535,10 @@ def build_cloak_driver(proxy: str | None = None) -> tuple[CloakSeleniumDriver, C
 
     driver = CloakSeleniumDriver(browser=browser, context=context, page=page)
     # Roxy/Cloak 共用部分页面操作函数；给共享函数一个显式日志前缀，
-    # 避免 Cloak 注册流程里出现 `[Roxy注册]`。
-    driver._registration_log_prefix = "[Cloak注册]"
+    # 避免 Cloak/Chromix 注册流程里出现 `[Roxy注册]`。
+    driver._registration_log_prefix = f"[{log_tag}注册]"
     driver.set_page_load_timeout(int(getattr(_cfg, "CLOAK_SELENIUM_TIMEOUT", 90) or 90))
-    return driver, CloakOpenResult(raw={"driver": "cloakbrowser", "proxy": proxy_url, "locale": locale_opts, "options": {k: v for k, v in opts.items() if k != "license_key"}})
+    return driver, CloakOpenResult(
+        profile_id=engine,
+        raw={"driver": engine, "proxy": proxy_url, "locale": locale_opts, "options": {k: v for k, v in opts.items() if k != "license_key"}},
+    )
