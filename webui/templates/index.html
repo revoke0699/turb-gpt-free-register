@@ -212,17 +212,12 @@
     #logPanel .log, #retryLogPanel .log, #liveLogPanel .log, #totpLogPanel .log, #emailChangeLogPanel .log { max-height: calc(min(760px, calc(100vh - 48px)) - 74px); margin-top:0; }
     #logScreenshotWrap { margin: 0 0 10px; }
     #logScreenshotWrap.hidden { display: none !important; }
-    #logScreenshot {
-      display: block; width: 100%; max-height: 280px; object-fit: contain;
-      border: 1px solid var(--line); border-radius: 8px; background: #0c1322; cursor: zoom-in;
+    .fail-shot-btn {
+      display: inline-flex; align-items: center; min-height: 28px; margin: 6px 0 0;
+      padding: 0 10px; border: 1px solid var(--line); border-radius: 6px;
+      background: #fff; color: #377DFF; font-size: 12px; font-weight: 600; cursor: pointer;
     }
-    .fail-shot-thumb {
-      display: block; width: 168px; height: 96px; object-fit: cover;
-      border: 1px solid var(--line); border-radius: 8px; background: #0c1322;
-      cursor: zoom-in; margin: 6px 0;
-    }
-    .jobs-table-v2 td.col-error { white-space: normal; }
-    .jobs-table-v2 tbody td { height: auto; min-height: 50px; }
+    .fail-shot-btn:hover { background: #f0f5ff; }
     #shotPanel:not(.hidden) { width: min(1100px, calc(100vw - 48px)); text-align: center; overflow: auto; }
     #shotPanel img { display:block; width:100%; max-height: calc(min(760px, calc(100vh - 48px)) - 74px); object-fit: contain; margin: 0 auto; border-radius: 8px; background:#0c1322; }
     #qrPanel img { display:block; max-width:min(360px, calc(100vw - 96px)); max-height:420px; margin:12px auto; border:1px solid var(--line); border-radius:10px; background:#fff; }
@@ -713,7 +708,7 @@
       width: 168px; overflow: visible; text-overflow: clip; white-space: nowrap;
     }
     .jobs-table-v2 td.col-error {
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      white-space: normal; overflow: hidden;
     }
     .jobs-table-v2 .jobs-v2-pill {
       display: inline-flex; align-items: center; justify-content: center;
@@ -2857,9 +2852,7 @@
 <div class="body hidden" id="logPanel">
   <h3>任务 #<span id="logJobId"></span> 日志 <button class="btn" id="btnCloseLog" style="float:right;min-height:28px;">关闭</button></h3>
   <div id="logScreenshotWrap" class="hidden">
-    <a id="logScreenshotLink" href="#" target="_blank" rel="noopener noreferrer" title="打开原图">
-      <img id="logScreenshot" alt="失败时的界面截图">
-    </a>
+    <button type="button" class="fail-shot-btn" id="logScreenshotBtn">查看截图</button>
   </div>
   <div class="log" id="logContent">加载中…</div>
 </div>
@@ -3036,9 +3029,9 @@ function isPlaceholderEmpty(v) {
 }
 function short(v, n=40) { const s = v || ''; return s.length > n ? s.slice(0,n)+'…' : s; }
 function jobScreenshotUrl(jobId) { return `/api/jobs/${encodeURIComponent(jobId)}/screenshot`; }
-function failShotThumb(jobId) {
+function failShotBtn(jobId) {
   if (!jobId) return '';
-  return `<img class="fail-shot-thumb" src="${jobScreenshotUrl(jobId)}" alt="失败截图" data-shot-job="${esc(jobId)}">`;
+  return `<button type="button" class="fail-shot-btn" data-shot-job="${esc(jobId)}">查看截图</button>`;
 }
 function hideShotPaths(text) {
   return String(text || '').replace(/\[失败截图\][^\n]*/g, '[失败截图] 已保存');
@@ -3368,7 +3361,7 @@ function renderJobs() {
         <td class="col-time" title="${esc(started)}">${esc(started)}</td>
         <td class="col-time" title="${esc(completed)}">${esc(completed)}</td>
         <td class="col-traffic">${formatTraffic(j.network_traffic)}</td>
-        <td class="col-error" title="${esc(err)}">${j.has_screenshot ? failShotThumb(j.id) : ''}${esc(err ? short(err, 60) : (j.has_screenshot ? '' : '-'))}</td>
+        <td class="col-error" title="${esc(err)}">${esc(err ? short(err, 60) : '-')}${j.has_screenshot ? failShotBtn(j.id) : ''}</td>
         <td class="col-actions">
           <div class="jobs-v2-ops">
             <button type="button" class="jobs-v2-op jobs-v2-op--view" data-log-job="${esc(j.id)}" title="查看日志">${icons.view}</button>
@@ -3483,7 +3476,7 @@ function renderRuntimeLogs() {
     const raw = String(item.message || '');
     const isShot = /\[失败截图\]/.test(raw);
     const message = isShot && item.job_id
-      ? `${esc(hideShotPaths(raw))}${failShotThumb(item.job_id)}`
+      ? `${esc(hideShotPaths(raw))} ${failShotBtn(item.job_id)}`
       : esc(hideShotPaths(raw));
     return `<div class="runtime-log-line is-${esc(item.tone)}"><span class="t">[${esc(item.time)}]</span> ${prefix}${message}</div>`;
   }).join('');
@@ -3511,7 +3504,7 @@ function renderRuntimeResults(jobs) {
       <div style="min-width:0;flex:1;">
         <div style="font-weight:700;">${esc(j.email || ('#' + j.id))}</div>
         <div class="muted" style="font-size:12px;">${esc(j.error_message || formatDateTime(j.completed_at || j.started_at))}</div>
-        ${j.has_screenshot ? failShotThumb(j.id) : ''}
+        ${j.has_screenshot ? failShotBtn(j.id) : ''}
       </div>
     </div>`;
   }).join('');
@@ -3664,15 +3657,9 @@ $('#btnCloseLog').addEventListener('click', closeLogModal);
 const btnCloseShot = $('#btnCloseShot');
 if (btnCloseShot) btnCloseShot.addEventListener('click', closeShot);
 document.addEventListener('click', (e) => {
-  const shot = e.target.closest('[data-shot-job], #logScreenshot');
-  if (!shot) return;
-  if (shot.id === 'logScreenshot' && activeLogJob != null) {
-    openShot(activeLogJob);
-    return;
-  }
-  if (shot.dataset && shot.dataset.shotJob) {
-    openShot(parseInt(shot.dataset.shotJob, 10));
-  }
+  const shot = e.target.closest('[data-shot-job]');
+  if (!shot || !shot.dataset.shotJob) return;
+  openShot(parseInt(shot.dataset.shotJob, 10));
 });
 
 async function submitManualOtpForJob(btn) {
@@ -3838,16 +3825,13 @@ async function pollLog() {
     const atBottom = c.scrollTop + c.clientHeight >= c.scrollHeight - 30;
     c.textContent = hideShotPaths(r.log || '(暂无日志)');
     const wrap = $('#logScreenshotWrap');
-    const img = $('#logScreenshot');
-    const link = $('#logScreenshotLink');
-    const shotUrl = `/api/jobs/${activeLogJob}/screenshot`;
-    if (wrap && img && (r.job?.screenshot_path || r.job?.has_screenshot)) {
+    const btn = $('#logScreenshotBtn');
+    if (wrap && (r.job?.screenshot_path || r.job?.has_screenshot)) {
       wrap.classList.remove('hidden');
-      img.src = shotUrl;
-      if (link) link.href = shotUrl;
+      if (btn) btn.dataset.shotJob = String(activeLogJob);
     } else if (wrap) {
       wrap.classList.add('hidden');
-      if (img) img.removeAttribute('src');
+      if (btn) delete btn.dataset.shotJob;
     }
     if (atBottom) c.scrollTop = c.scrollHeight;
     if (r.job && ['success','failed','stopped','cancelled'].includes(r.job.status)) clearInterval(logTimer);
