@@ -198,8 +198,8 @@
       width: 100%; max-width: 100%; min-width: 0;
       max-height: 320px; overflow: auto; line-height: 1.5;
     }
-    #logPanel, #retryLogPanel, #liveLogPanel, #totpLogPanel, #emailChangeLogPanel, #qrPanel { min-width: 0; max-width: 100%; overflow-x: hidden; }
-    #logPanel:not(.hidden), #retryLogPanel:not(.hidden), #liveLogPanel:not(.hidden), #totpLogPanel:not(.hidden), #emailChangeLogPanel:not(.hidden), #qrPanel:not(.hidden) {
+    #logPanel, #retryLogPanel, #liveLogPanel, #totpLogPanel, #emailChangeLogPanel, #qrPanel, #shotPanel { min-width: 0; max-width: 100%; overflow-x: hidden; }
+    #logPanel:not(.hidden), #retryLogPanel:not(.hidden), #liveLogPanel:not(.hidden), #totpLogPanel:not(.hidden), #emailChangeLogPanel:not(.hidden), #qrPanel:not(.hidden), #shotPanel:not(.hidden) {
       position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
       z-index: 1000; display: block; width: min(1100px, calc(100vw - 48px));
       max-height: min(760px, calc(100vh - 48px)); overflow: hidden;
@@ -207,8 +207,8 @@
       background: var(--surface); box-shadow: 0 0 0 9999px rgba(15,23,42,.45), 0 24px 70px rgba(15,23,42,.34);
     }
     #qrPanel:not(.hidden) { width: min(520px, calc(100vw - 48px)); text-align: center; }
-    #logPanel h3, #retryLogPanel h3, #liveLogPanel h3, #totpLogPanel h3, #emailChangeLogPanel h3, #qrPanel h3 { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
-    #logPanel h3 .btn, #retryLogPanel h3 .btn, #liveLogPanel h3 .btn, #totpLogPanel h3 .btn, #emailChangeLogPanel h3 .btn, #qrPanel h3 .btn { margin-left:auto; float:none !important; }
+    #logPanel h3, #retryLogPanel h3, #liveLogPanel h3, #totpLogPanel h3, #emailChangeLogPanel h3, #qrPanel h3, #shotPanel h3 { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+    #logPanel h3 .btn, #retryLogPanel h3 .btn, #liveLogPanel h3 .btn, #totpLogPanel h3 .btn, #emailChangeLogPanel h3 .btn, #qrPanel h3 .btn, #shotPanel h3 .btn { margin-left:auto; float:none !important; }
     #logPanel .log, #retryLogPanel .log, #liveLogPanel .log, #totpLogPanel .log, #emailChangeLogPanel .log { max-height: calc(min(760px, calc(100vh - 48px)) - 74px); margin-top:0; }
     #logScreenshotWrap { margin: 0 0 10px; }
     #logScreenshotWrap.hidden { display: none !important; }
@@ -216,6 +216,15 @@
       display: block; width: 100%; max-height: 280px; object-fit: contain;
       border: 1px solid var(--line); border-radius: 8px; background: #0c1322; cursor: zoom-in;
     }
+    .fail-shot-thumb {
+      display: block; width: 168px; height: 96px; object-fit: cover;
+      border: 1px solid var(--line); border-radius: 8px; background: #0c1322;
+      cursor: zoom-in; margin: 6px 0;
+    }
+    .jobs-table-v2 td.col-error { white-space: normal; }
+    .jobs-table-v2 tbody td { height: auto; min-height: 50px; }
+    #shotPanel:not(.hidden) { width: min(1100px, calc(100vw - 48px)); text-align: center; overflow: auto; }
+    #shotPanel img { display:block; width:100%; max-height: calc(min(760px, calc(100vh - 48px)) - 74px); object-fit: contain; margin: 0 auto; border-radius: 8px; background:#0c1322; }
     #qrPanel img { display:block; max-width:min(360px, calc(100vw - 96px)); max-height:420px; margin:12px auto; border:1px solid var(--line); border-radius:10px; background:#fff; }
     #qrPanel .qr-link { display:block; word-break:break-all; white-space:normal; font-size:12px; color:var(--muted); margin-top:8px; }
     .hidden { display: none !important; }
@@ -2859,6 +2868,10 @@
   <img id="qrImage" alt="支付二维码">
   <a id="qrOpenLink" class="qr-link" href="#" target="_blank" rel="noopener noreferrer"></a>
 </div>
+<div id="shotPanel" class="body hidden">
+  <h3>失败截图 <button class="btn" id="btnCloseShot">关闭</button></h3>
+  <img id="shotPanelImage" alt="失败时的界面截图">
+</div>
 
 <script>
 const $ = (s) => document.querySelector(s);
@@ -3022,6 +3035,14 @@ function isPlaceholderEmpty(v) {
   return !s || ['-', '—', '无', '空', 'none', 'null', 'n/a', 'na'].includes(s.toLowerCase());
 }
 function short(v, n=40) { const s = v || ''; return s.length > n ? s.slice(0,n)+'…' : s; }
+function jobScreenshotUrl(jobId) { return `/api/jobs/${encodeURIComponent(jobId)}/screenshot`; }
+function failShotThumb(jobId) {
+  if (!jobId) return '';
+  return `<img class="fail-shot-thumb" src="${jobScreenshotUrl(jobId)}" alt="失败截图" data-shot-job="${esc(jobId)}">`;
+}
+function hideShotPaths(text) {
+  return String(text || '').replace(/\[失败截图\][^\n]*/g, '[失败截图] 已保存');
+}
 function copyId(v) { if (!v) return ''; const id = 'c'+(++copySeq); copyStore.set(id, v); return id; }
 function cbtn(label, value, cls='') { const id = copyId(value); return `<button class="${cls}" data-copy-id="${id}" ${id?'':'disabled'}>${label}</button>`; }
 function pill(status) {
@@ -3195,7 +3216,7 @@ function bindJobsBodyEvents(bodyEl) {
     }
     const shotBtn = e.target.closest('[data-shot-job]');
     if (shotBtn) {
-      openLog(parseInt(shotBtn.dataset.shotJob, 10));
+      openShot(parseInt(shotBtn.dataset.shotJob, 10));
       return;
     }
     const stopBtn = e.target.closest('[data-stop-job]');
@@ -3347,7 +3368,7 @@ function renderJobs() {
         <td class="col-time" title="${esc(started)}">${esc(started)}</td>
         <td class="col-time" title="${esc(completed)}">${esc(completed)}</td>
         <td class="col-traffic">${formatTraffic(j.network_traffic)}</td>
-        <td class="col-error" title="${esc(err)}">${esc(err ? short(err, 60) : '-')}</td>
+        <td class="col-error" title="${esc(err)}">${j.has_screenshot ? failShotThumb(j.id) : ''}${esc(err ? short(err, 60) : (j.has_screenshot ? '' : '-'))}</td>
         <td class="col-actions">
           <div class="jobs-v2-ops">
             <button type="button" class="jobs-v2-op jobs-v2-op--view" data-log-job="${esc(j.id)}" title="查看日志">${icons.view}</button>
@@ -3459,7 +3480,12 @@ function renderRuntimeLogs() {
   const visible = filtered.slice(-400);
   box.innerHTML = visible.map((item) => {
     const prefix = item.job_id ? `[#${esc(item.job_id)}${item.email ? ' ' + item.email : ''}] ` : '';
-    return `<div class="runtime-log-line is-${esc(item.tone)}"><span class="t">[${esc(item.time)}]</span> ${prefix}${esc(item.message)}</div>`;
+    const raw = String(item.message || '');
+    const isShot = /\[失败截图\]/.test(raw);
+    const message = isShot && item.job_id
+      ? `${esc(hideShotPaths(raw))}${failShotThumb(item.job_id)}`
+      : esc(hideShotPaths(raw));
+    return `<div class="runtime-log-line is-${esc(item.tone)}"><span class="t">[${esc(item.time)}]</span> ${prefix}${message}</div>`;
   }).join('');
   if ($('#runtimeAutoScroll')?.checked) box.scrollTop = box.scrollHeight;
 }
@@ -3485,6 +3511,7 @@ function renderRuntimeResults(jobs) {
       <div style="min-width:0;flex:1;">
         <div style="font-weight:700;">${esc(j.email || ('#' + j.id))}</div>
         <div class="muted" style="font-size:12px;">${esc(j.error_message || formatDateTime(j.completed_at || j.started_at))}</div>
+        ${j.has_screenshot ? failShotThumb(j.id) : ''}
       </div>
     </div>`;
   }).join('');
@@ -3586,6 +3613,7 @@ function updateModalScrollLock() {
     || !$('#totpLogPanel').classList.contains('hidden')
     || !$('#emailChangeLogPanel').classList.contains('hidden')
     || !$('#qrPanel').classList.contains('hidden')
+    || ($('#shotPanel') && !$('#shotPanel').classList.contains('hidden'))
     || !$('#outlookImportModal').classList.contains('hidden')
     || !$('#emailChangeModalV2').classList.contains('hidden');
   const locked = document.body.classList.contains('modal-open');
@@ -3633,6 +3661,19 @@ function closeQrModal() {
 }
 
 $('#btnCloseLog').addEventListener('click', closeLogModal);
+const btnCloseShot = $('#btnCloseShot');
+if (btnCloseShot) btnCloseShot.addEventListener('click', closeShot);
+document.addEventListener('click', (e) => {
+  const shot = e.target.closest('[data-shot-job], #logScreenshot');
+  if (!shot) return;
+  if (shot.id === 'logScreenshot' && activeLogJob != null) {
+    openShot(activeLogJob);
+    return;
+  }
+  if (shot.dataset && shot.dataset.shotJob) {
+    openShot(parseInt(shot.dataset.shotJob, 10));
+  }
+});
 
 async function submitManualOtpForJob(btn) {
   const jobId = parseInt(btn.dataset.submitOtpJob, 10);
@@ -3764,6 +3805,21 @@ async function retrySelectedJobs() {
   }
 }
 
+function openShot(jobId) {
+  const img = $('#shotPanelImage');
+  const panel = $('#shotPanel');
+  if (!img || !panel) return;
+  img.src = jobScreenshotUrl(jobId);
+  panel.classList.remove('hidden');
+  updateModalScrollLock();
+}
+function closeShot() {
+  const img = $('#shotPanelImage');
+  const panel = $('#shotPanel');
+  if (panel) panel.classList.add('hidden');
+  if (img) img.removeAttribute('src');
+  updateModalScrollLock();
+}
 function openLog(jobId) {
   activeLogJob = jobId;
   $('#logJobId').textContent = jobId;
@@ -3780,7 +3836,7 @@ async function pollLog() {
     const r = await api(`/api/jobs/${activeLogJob}/log`);
     const c = $('#logContent');
     const atBottom = c.scrollTop + c.clientHeight >= c.scrollHeight - 30;
-    c.textContent = r.log || '(暂无日志)';
+    c.textContent = hideShotPaths(r.log || '(暂无日志)');
     const wrap = $('#logScreenshotWrap');
     const img = $('#logScreenshot');
     const link = $('#logScreenshotLink');

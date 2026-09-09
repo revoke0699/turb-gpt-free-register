@@ -198,11 +198,13 @@ def _compact_job_for_list(row: dict) -> dict:
     for key in (
         "parent_job_id", "retry_attempt", "batch_id", "email", "started_at", "completed_at",
         "display_status", "retryable", "retry_action", "retry_label",
-        "manual_otp_required", "has_screenshot",
+        "manual_otp_required",
     ):
         value = row.get(key)
         if value is not None and value != "" and value is not False:
             out[key] = value
+    if str(row.get("screenshot_path") or "").strip() or row.get("has_screenshot"):
+        out["has_screenshot"] = True
     err = str(row.get("error_message") or "").strip()
     if err:
         # 列表只需要摘要；完整错误和堆栈看“任务日志”。

@@ -153,6 +153,7 @@ class FailureScreenshotTests(unittest.TestCase):
     def test_modern_ui_has_screenshot_viewer(self):
         html = Path(__file__).resolve().parents[1].joinpath("webui/templates/index.html").read_text(encoding="utf-8")
         self.assertIn('id="logScreenshot"', html)
+        self.assertIn("fail-shot-thumb", html)
         self.assertIn("/api/jobs/", html)
         self.assertIn("screenshot", html)
 

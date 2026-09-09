@@ -24,7 +24,7 @@ def capture_registration_failure(source: Any, *, reason: str = "") -> str | None
         if job is not None:
             db.update_job(int(job["id"]), screenshot_path=str(path))
         hint = f"（{reason}）" if reason else ""
-        logger.warning("[失败截图] 已保存%s：%s", hint, path)
+        logger.warning("[失败截图] 已保存%s", hint)
         return str(path)
     except Exception as exc:
         logger.warning("[失败截图] 保存失败：%s: %s", type(exc).__name__, str(exc)[:180])
