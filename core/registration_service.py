@@ -226,7 +226,7 @@ def get_runtime_snapshot(after_id: int = 0) -> dict[str, Any]:
         "current_stage": stage,
         "current_email": current_emails[0] if current_emails else "",
         "current_emails": current_emails,
-        "jobs": jobs,
+        "jobs": [job for job in jobs if str(job.get("status") or "") != "pending"],
         "logs": logs,
         "log_count": log_count,
         "latest_log_id": latest_log_id,

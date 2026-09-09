@@ -489,7 +489,7 @@
     </section>
     <section class="card">
       <div class="toolbar">
-        <div><h2>任务列表</h2></div>
+        <div><h2>任务列表</h2><p class="muted" style="margin-top:4px;font-size:12px;font-weight:400;">仅显示最近 50 条，不含排队</p></div>
         <div class="buttons">
           <span class="muted" id="jobsSelectedHint" style="font-size:12px;align-self:center;margin-right:4px;">已选 0</span>
           <button class="btn good" id="btnRetrySelectedJobs" disabled title="重试选中的失败、已停止或已取消任务">重试选中</button>
@@ -1018,7 +1018,7 @@ async function refreshJobs() {
   try {
     const p = PAGERS.jobs;
     const res = await api(`/api/jobs?paged=1&page=${encodeURIComponent(p.page)}&page_size=${encodeURIComponent(p.size)}`);
-    const nextJobs = res.items || [];
+    const nextJobs = (res.items || []).filter((j) => j.status !== 'pending');
     JOBS_TOTAL = Number(res.total || nextJobs.length || 0);
     JOB_STATUS_COUNTS = res.status_counts || {};
     const totalPages = Math.max(1, Math.ceil(JOBS_TOTAL / p.size));

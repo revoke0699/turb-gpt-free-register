@@ -2423,6 +2423,7 @@
         <button type="button" class="jobs-tb-btn jobs-tb-btn--danger" id="btnDeleteSelectedJobsV2" disabled title="删除选中的非运行中任务，并同时删除对应日志">删除选中</button>
         <button type="button" class="jobs-tb-btn" id="btnCancelPendingV2" title="把所有排队任务标记为已取消">取消全部排队</button>
         <button type="button" class="jobs-tb-btn" id="btnRefreshJobsV2" title="手动刷新任务列表">刷新</button>
+        <span class="muted" style="margin-left:auto;font-size:12px;">仅显示最近 50 条，不含排队</span>
       </div>
       <div class="jobs-table-v2-wrap">
         <table class="jobs-table-v2">
@@ -2914,7 +2915,7 @@ function _renderPager(id, total) {
         : id === 'accounts' ? 'accountsPagerSize'
         : id === 'codex' ? 'codexPagerSize'
         : 'outlookPagerSize';
-      const v2Sizes = [10, 20, 30, 50, 100];
+      const v2Sizes = id === 'jobs' ? [10, 20, 30, 50] : [10, 20, 30, 50, 100];
       const pages = [];
       let from = Math.max(1, p.page - 2);
       let to = Math.min(totalPages, from + 4);
@@ -3528,7 +3529,7 @@ function applyRuntimeSnapshot(snap, appendLogs) {
     }
     renderRuntimeLogs();
   }
-  renderRuntimeResults(snap.jobs || []);
+  renderRuntimeResults((snap.jobs || []).filter((j) => j.status !== 'pending'));
   updateRegisterPreview();
 }
 async function refreshRuntime(force=false) {
@@ -3542,8 +3543,9 @@ async function refreshRuntime(force=false) {
 async function refreshJobs() {
   try {
     const p = PAGERS.jobs;
+    if (p.size > 50) p.size = 50;
     const res = await api(`/api/jobs?paged=1&page=${encodeURIComponent(p.page)}&page_size=${encodeURIComponent(p.size)}`);
-    const nextJobs = res.items || [];
+    const nextJobs = (res.items || []).filter((j) => j.status !== 'pending');
     JOBS_TOTAL = Number(res.total || nextJobs.length || 0);
     JOB_STATUS_COUNTS = res.status_counts || {};
     const totalPages = Math.max(1, Math.ceil(JOBS_TOTAL / p.size));

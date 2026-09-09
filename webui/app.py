@@ -2481,7 +2481,7 @@ def create_app(auth_code: str | None = None) -> Flask:
         manual_otp_required = not bool(getattr(_email_cfg, "USE_EMAIL_SERVICE", True))
         if paged or page_arg is not None or page_size_arg is not None:
             page = max(1, int(page_arg or 1))
-            page_size = max(1, min(500, int(page_size_arg or limit or 50)))
+            page_size = max(1, min(50, int(page_size_arg or limit or 50)))
             result = db.list_jobs_page(
                 limit=page_size, offset=(page - 1) * page_size
             )

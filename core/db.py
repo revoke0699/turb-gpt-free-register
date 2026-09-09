@@ -3081,14 +3081,28 @@ def list_jobs(limit: int = 100) -> list[dict]:
         return [dict(r) for r in _query_collection("jobs", limit=limit)]
 
 
+_JOB_LIST_RECENT_LIMIT = 50
+
+
 def list_jobs_page(limit: int = 50, offset: int = 0) -> dict:
-    """直接使用 registration_jobs 的 SQL LIMIT/OFFSET 返回任务页。"""
+    """返回任务页：不含排队中的任务，且只保留最近一批已开始/已结束记录。"""
     with _LOCK:
         limit = max(1, int(limit))
         offset = max(0, int(offset or 0))
         rows, total, latest = _query_collection_page(
-            "jobs", limit=limit, offset=offset
+            "jobs",
+            limit=limit,
+            offset=offset,
+            extra_where=["status != ?"],
+            extra_params=["pending"],
         )
+        cap = _JOB_LIST_RECENT_LIMIT
+        if total > cap:
+            total = cap
+        if offset >= total:
+            rows = []
+        elif len(rows) > max(0, total - offset):
+            rows = rows[: max(0, total - offset)]
         return {
             "items": rows,
             "total": total,
