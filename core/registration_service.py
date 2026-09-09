@@ -9,8 +9,10 @@
     submit_registration(email_source="outlook", count=5)
     → 创建 5 个任务，丢入线程池，立即返回 [job_dict, ...]
 """
+import collections
 import logging
 import threading
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
@@ -35,13 +37,229 @@ _ACTIVE_JOBS: set[int] = set()
 _STOP_LOCK = threading.Lock()
 _THREAD_CTX = threading.local()
 
+_RUNTIME_LOG_MAX = 2000
+_RUNTIME_LOG_LOCK = threading.Lock()
+_RUNTIME_LOGS: collections.deque[dict[str, Any]] = collections.deque(maxlen=_RUNTIME_LOG_MAX)
+_RUNTIME_LOG_SEQ = 0
+_RUNTIME_BATCH_ID = ""
+
 
 class StopRequested(RuntimeError):
     """用户手动停止注册任务。"""
 
 
+def new_batch_id() -> str:
+    return f"web-{datetime.now().strftime('%Y%m%d_%H%M%S')}-{uuid.uuid4().hex[:6]}"
+
+
+def reset_runtime_state() -> None:
+    """测试/进程内重置当前批次内存日志。"""
+    global _RUNTIME_LOG_SEQ, _RUNTIME_BATCH_ID
+    with _RUNTIME_LOG_LOCK:
+        _RUNTIME_LOGS.clear()
+        _RUNTIME_LOG_SEQ = 0
+        _RUNTIME_BATCH_ID = ""
+
+
+def begin_runtime_batch(
+    batch_id: str,
+    *,
+    target_count: int,
+    workers: int,
+    started_at: str | None = None,
+) -> dict:
+    """把一次提交标记为当前监控批次，并清空内存日志缓冲。"""
+    global _RUNTIME_LOG_SEQ, _RUNTIME_BATCH_ID
+    bid = str(batch_id or "").strip()
+    started = str(started_at or datetime.now().isoformat(timespec="seconds"))
+    payload = {
+        "batch_id": bid,
+        "target_count": max(0, int(target_count or 0)),
+        "workers": max(1, int(workers or 1)),
+        "started_at": started,
+        "source": "web",
+    }
+    with _RUNTIME_LOG_LOCK:
+        _RUNTIME_LOGS.clear()
+        _RUNTIME_LOG_SEQ = 0
+        _RUNTIME_BATCH_ID = bid
+    db.save_current_batch(payload)
+    return payload
+
+
+def append_runtime_log(job_id: int | None, level: str, message: str, *, email: str | None = None) -> dict | None:
+    """写入当前批次的内存环形日志。"""
+    global _RUNTIME_LOG_SEQ
+    text = str(message or "").rstrip()
+    if not text:
+        return None
+    job = None
+    resolved_email = str(email or "").strip()
+    if not resolved_email:
+        resolved_email = str(getattr(_THREAD_CTX, "email", "") or "").strip()
+    if job_id is not None and not resolved_email:
+        try:
+            job = db.get_job(int(job_id))
+        except Exception:
+            job = None
+        resolved_email = str((job or {}).get("email") or "").strip()
+    item = {
+        "id": 0,
+        "time": datetime.now().strftime("%H:%M:%S"),
+        "job_id": int(job_id) if job_id is not None else None,
+        "email": resolved_email,
+        "level": str(level or "INFO").upper(),
+        "message": text,
+    }
+    with _RUNTIME_LOG_LOCK:
+        _RUNTIME_LOG_SEQ += 1
+        item["id"] = _RUNTIME_LOG_SEQ
+        _RUNTIME_LOGS.append(item)
+    return dict(item)
+
+
+def _parse_job_time(value: str | None) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    for candidate in (text, text.replace("Z", ""), text.replace("T", " ")):
+        try:
+            return datetime.fromisoformat(candidate)
+        except ValueError:
+            continue
+    return None
+
+
+def _empty_runtime_snapshot() -> dict[str, Any]:
+    return {
+        "ok": True,
+        "batch_id": "",
+        "running": False,
+        "started_at": None,
+        "finished_at": None,
+        "target_count": 0,
+        "workers": 1,
+        "source": "web",
+        "last_error": "",
+        "completed_count": 0,
+        "success_count": 0,
+        "failure_count": 0,
+        "pending_count": 0,
+        "progress_percent": 0,
+        "current_stage": "空闲",
+        "current_email": "",
+        "current_emails": [],
+        "jobs": [],
+        "logs": [],
+        "log_count": 0,
+        "latest_log_id": 0,
+    }
+
+
+def get_runtime_snapshot(after_id: int = 0) -> dict[str, Any]:
+    """当前批次进度 + 增量日志。"""
+    meta = db.get_current_batch() or {}
+    batch_id = str(meta.get("batch_id") or _RUNTIME_BATCH_ID or "").strip()
+    snap = _empty_runtime_snapshot()
+    if not batch_id:
+        with _RUNTIME_LOG_LOCK:
+            snap["log_count"] = len(_RUNTIME_LOGS)
+            snap["latest_log_id"] = int(_RUNTIME_LOG_SEQ)
+        return snap
+
+    jobs = db.list_jobs_by_batch(batch_id)
+    success_count = sum(1 for job in jobs if job.get("status") == "success")
+    failure_count = sum(1 for job in jobs if job.get("status") == "failed")
+    terminal = {"success", "failed", "stopped", "cancelled"}
+    completed_count = sum(1 for job in jobs if job.get("status") in terminal)
+    pending_count = sum(1 for job in jobs if job.get("status") in ("pending", "running", "stopping"))
+    running = pending_count > 0
+    target_count = max(int(meta.get("target_count") or 0), len(jobs))
+    workers = max(1, int(meta.get("workers") or get_executor_workers() or 1))
+    current_emails = [
+        str(job.get("email") or "").strip()
+        for job in jobs
+        if job.get("status") in ("running", "stopping") and str(job.get("email") or "").strip()
+    ]
+    last_error = ""
+    for job in reversed(jobs):
+        err = str(job.get("error_message") or "").strip()
+        if err:
+            last_error = err
+            break
+    started_candidates = [_parse_job_time(meta.get("started_at"))]
+    finished_candidates = []
+    for job in jobs:
+        started_candidates.append(_parse_job_time(job.get("started_at") or job.get("created_at")))
+        if job.get("status") in terminal:
+            finished_candidates.append(_parse_job_time(job.get("completed_at")))
+    started_at_dt = min((item for item in started_candidates if item is not None), default=None)
+    finished_at_dt = None if running else max((item for item in finished_candidates if item is not None), default=None)
+    if running:
+        stage = "运行中" if any(job.get("status") in ("running", "stopping") for job in jobs) else "排队中"
+    else:
+        stage = "已结束" if jobs else "空闲"
+    progress_percent = 0
+    if target_count > 0:
+        progress_percent = min(100, round(completed_count * 100 / target_count))
+
+    with _RUNTIME_LOG_LOCK:
+        after = max(0, int(after_id or 0))
+        logs = [dict(item) for item in _RUNTIME_LOGS if int(item.get("id") or 0) > after]
+        log_count = len(_RUNTIME_LOGS)
+        latest_log_id = int(_RUNTIME_LOG_SEQ)
+
+    snap.update({
+        "batch_id": batch_id,
+        "running": running,
+        "started_at": started_at_dt.isoformat(timespec="seconds") if started_at_dt else meta.get("started_at"),
+        "finished_at": finished_at_dt.isoformat(timespec="seconds") if finished_at_dt else None,
+        "target_count": target_count,
+        "workers": workers,
+        "source": str(meta.get("source") or "web"),
+        "last_error": last_error,
+        "completed_count": completed_count,
+        "success_count": success_count,
+        "failure_count": failure_count,
+        "pending_count": pending_count,
+        "progress_percent": progress_percent,
+        "current_stage": stage,
+        "current_email": current_emails[0] if current_emails else "",
+        "current_emails": current_emails,
+        "jobs": jobs,
+        "logs": logs,
+        "log_count": log_count,
+        "latest_log_id": latest_log_id,
+    })
+    return snap
+
+
+def request_stop_batch(batch_id: str | None = None) -> dict:
+    """停止当前（或指定）批次里尚未结束的任务。"""
+    bid = str(batch_id or "").strip() or str((db.get_current_batch() or {}).get("batch_id") or "").strip()
+    if not bid:
+        return {"ok": True, "batch_id": "", "stopped_count": 0, "results": []}
+    results = []
+    for job in db.list_jobs_by_batch(bid):
+        status = str(job.get("status") or "")
+        if status not in ("pending", "running", "stopping"):
+            continue
+        results.append(request_stop_job(int(job["id"])))
+    return {
+        "ok": True,
+        "batch_id": bid,
+        "stopped_count": len(results),
+        "results": results,
+    }
+
+
 def _activate_job(job_id: int) -> None:
     _THREAD_CTX.job_id = int(job_id)
+    try:
+        job = db.get_job(int(job_id))
+        _THREAD_CTX.email = str((job or {}).get("email") or "")
+    except Exception:
+        _THREAD_CTX.email = ""
     with _STOP_LOCK:
         _STOP_EVENTS.setdefault(int(job_id), threading.Event())
         _ACTIVE_JOBS.add(int(job_id))
@@ -86,6 +304,7 @@ def _append_job_log(job_id: int, message: str) -> None:
         ts = datetime.now().strftime("%H:%M:%S")
         with Path(log_file).open("a", encoding="utf-8") as f:
             f.write(f"{ts} [WARNING] [manual-stop] {message}\n")
+        append_runtime_log(job_id, "WARNING", message, email=str((job or {}).get("email") or "") or None)
     except Exception:
         pass
 
@@ -245,12 +464,30 @@ def shutdown_executor(wait: bool = True) -> None:
 # 单任务执行：日志重定向到任务专属文件
 # ============================================================
 
+class _RuntimeLogHandler(logging.Handler):
+    """把当前任务线程的日志同步进运行监控环形缓冲。"""
+
+    def __init__(self, job_id: int):
+        super().__init__(level=logging.INFO)
+        self.job_id = int(job_id)
+        thread_name = threading.current_thread().name
+        self.addFilter(lambda record, name=thread_name: record.threadName == name)
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            append_runtime_log(self.job_id, record.levelname, record.getMessage())
+        except Exception:
+            pass
+
+
 class _JobLogContext:
     """让本线程的根 logger 多一个 FileHandler，结束后移除。"""
 
-    def __init__(self, log_path: str):
+    def __init__(self, log_path: str, job_id: int | None = None):
         self.log_path = log_path
+        self.job_id = job_id
         self.handler: logging.FileHandler | None = None
+        self.runtime_handler: _RuntimeLogHandler | None = None
 
     def __enter__(self):
         Path(self.log_path).parent.mkdir(parents=True, exist_ok=True)
@@ -264,12 +501,17 @@ class _JobLogContext:
         thread_name = threading.current_thread().name
         self.handler.addFilter(lambda r: r.threadName == thread_name)
         logging.getLogger().addHandler(self.handler)
+        if self.job_id is not None:
+            self.runtime_handler = _RuntimeLogHandler(self.job_id)
+            logging.getLogger().addHandler(self.runtime_handler)
         return self
 
     def __exit__(self, exc_type, exc, tb):
         if self.handler is not None:
             self.handler.close()
             logging.getLogger().removeHandler(self.handler)
+        if self.runtime_handler is not None:
+            logging.getLogger().removeHandler(self.runtime_handler)
 
 
 def _run_one_job(job_id: int, log_file: str) -> None:
@@ -293,7 +535,7 @@ def _run_one_job(job_id: int, log_file: str) -> None:
 
     email: str | None = None
     try:
-        with _JobLogContext(log_file):
+        with _JobLogContext(log_file, job_id=job_id):
             from main import run_registration
             log_logger.info(f"[Job {job_id}] 开始注册任务")
             email, name, birthday = _prepare_registration_args()
@@ -303,6 +545,7 @@ def _run_one_job(job_id: int, log_file: str) -> None:
                 nonlocal email
                 email = str(acquired_email or "").strip() or None
                 if email:
+                    _THREAD_CTX.email = email
                     db.update_job(job_id, email=email)
                     log_logger.info(f"[Job {job_id}] 页面已找到邮箱输入框，已分配邮箱: {email}")
 
@@ -457,9 +700,11 @@ def submit_registration(count: int = 1, email_source: str | None = None, workers
     with _executor_lock:
         executor = get_executor(max_workers=workers)
         effective_workers = get_executor_workers()
+        batch_id = new_batch_id()
+        begin_runtime_batch(batch_id, target_count=count, workers=effective_workers)
         jobs = []
         for _ in range(count):
-            job = db.create_job(email_source=email_source)
+            job = db.create_job(email_source=email_source, batch_id=batch_id)
             try:
                 executor.submit(_run_one_job, job["id"], job["log_file"])
             except Exception as exc:
@@ -471,7 +716,9 @@ def submit_registration(count: int = 1, email_source: str | None = None, workers
                 )
                 logger.exception("[Service] 注册任务 #%s 提交线程池失败", job["id"])
             jobs.append(db.get_job(int(job["id"])) or job)
-    logger.info(f"[Service] 已提交 {count} 个注册任务，源={email_source}，workers={effective_workers}")
+    logger.info(
+        f"[Service] 已提交 {count} 个注册任务，源={email_source}，workers={effective_workers}，batch={batch_id}"
+    )
     return jobs
 
 
@@ -534,7 +781,7 @@ def get_retry_info(job: dict) -> dict:
     return info
 
 
-def retry_job(job_id: int, workers: int | None = None) -> dict:
+def retry_job(job_id: int, workers: int | None = None, batch_id: str | None = None) -> dict:
     """智能重试终态任务：未生成账号则重新注册，已有账号则仅补跑 Codex。"""
     source = db.get_job(job_id)
     if source is None:
@@ -558,12 +805,17 @@ def retry_job(job_id: int, workers: int | None = None) -> dict:
         reserved_codex = True
 
     try:
+        current_batch_id = str(batch_id or "").strip()
+        if not current_batch_id:
+            current_batch_id = new_batch_id()
+            begin_runtime_batch(current_batch_id, target_count=1, workers=workers or get_executor_workers())
         job, created = db.create_retry_job(
             int(job_id),
             job_type="codex_retry" if action == "codex" else "registration",
             email_source=str(source.get("email_source") or "outlook"),
             email=email if action == "codex" else None,
             account_id=account_id if action == "codex" else None,
+            batch_id=current_batch_id,
         )
     except LookupError as exc:
         if reserved_codex:

@@ -196,7 +196,7 @@ def _compact_job_for_list(row: dict) -> dict:
         "status": row.get("status"),
     }
     for key in (
-        "parent_job_id", "retry_attempt", "email", "started_at", "completed_at",
+        "parent_job_id", "retry_attempt", "batch_id", "email", "started_at", "completed_at",
         "display_status", "retryable", "retry_action", "retry_label",
         "manual_otp_required",
     ):
@@ -2534,12 +2534,14 @@ def create_app(auth_code: str | None = None) -> Flask:
                     "error": "手动模式建议每次只跑 1 个任务（同一 REGISTER_EMAIL）。请把数量设为 1。",
                 }), 400
             jobs = svc.submit_registration(count=count, workers=workers)
+            batch_id = str((jobs[0] or {}).get("batch_id") or "") if jobs else ""
             return jsonify({
                 "ok": True,
                 "submitted": len(jobs),
                 "jobs": jobs,
                 "warning": f"手动 OTP 模式：将使用 {reg_email}；验证码请在任务页提交",
                 "workers": workers,
+                "batch_id": batch_id,
             })
         sources = parse_email_sources(_email_cfg.EMAIL_SOURCE)
         if "gptmail" in sources:
@@ -2660,7 +2662,15 @@ def create_app(auth_code: str | None = None) -> Flask:
             if pool.get("available", 0) < count:
                 warning = f"可用邮箱仅 {pool.get('available', 0)} 个，少于任务数 {count}，不足的会失败"
         jobs = svc.submit_registration(count=count, workers=workers)
-        return jsonify({"ok": True, "submitted": len(jobs), "jobs": jobs, "warning": warning, "workers": workers})
+        batch_id = str((jobs[0] or {}).get("batch_id") or "") if jobs else ""
+        return jsonify({
+            "ok": True,
+            "submitted": len(jobs),
+            "jobs": jobs,
+            "warning": warning,
+            "workers": workers,
+            "batch_id": batch_id,
+        })
 
     @app.get("/api/manual-otp/waiting")
     def api_manual_otp_waiting():
@@ -2686,6 +2696,31 @@ def create_app(auth_code: str | None = None) -> Flask:
             return jsonify(result)
         except Exception as exc:
             return jsonify({"ok": False, "error": f"{type(exc).__name__}: {exc}"}), 400
+
+    @app.get("/api/runtime")
+    def api_runtime():
+        """当前注册批次的进度、结果摘要和增量日志。"""
+        after_id = request.args.get("after_id", default=0, type=int) or 0
+        snap = svc.get_runtime_snapshot(after_id=int(after_id))
+        from config import email as _email_cfg
+        manual_otp_required = not bool(getattr(_email_cfg, "USE_EMAIL_SERVICE", True))
+        compact_jobs = []
+        for row in snap.get("jobs") or []:
+            item = dict(row)
+            item["manual_otp_required"] = manual_otp_required
+            item.update(svc.get_retry_info(item))
+            compact_jobs.append(_compact_job_for_list(item))
+        snap["jobs"] = compact_jobs
+        snap["ok"] = True
+        return jsonify(snap)
+
+    @app.post("/api/jobs/stop-batch")
+    def api_jobs_stop_batch():
+        """停止当前批次（或 body.batch_id）里尚未结束的任务。"""
+        data = request.get_json(silent=True) or {}
+        batch_id = str(data.get("batch_id") or "").strip() or None
+        result = svc.request_stop_batch(batch_id)
+        return jsonify(result)
 
     @app.post("/api/jobs/cancel-pending")
     def api_jobs_cancel_pending():
@@ -2732,6 +2767,8 @@ def create_app(auth_code: str | None = None) -> Flask:
         reused: list[dict] = []
         skipped: list[dict] = []
         seen: set[int] = set()
+        batch_id = svc.new_batch_id()
+        svc.begin_runtime_batch(batch_id, target_count=len(job_ids), workers=workers)
         for raw_id in job_ids:
             try:
                 one_id = int(raw_id)
@@ -2741,7 +2778,7 @@ def create_app(auth_code: str | None = None) -> Flask:
             if one_id in seen:
                 continue
             seen.add(one_id)
-            result = svc.retry_job(one_id, workers=workers)
+            result = svc.retry_job(one_id, workers=workers, batch_id=batch_id)
             if not result.get("ok"):
                 skipped.append({"id": one_id, "reason": result.get("error") or "不能重试"})
             elif result.get("reused"):
@@ -2757,6 +2794,7 @@ def create_app(auth_code: str | None = None) -> Flask:
             "skipped": skipped,
             "skipped_count": len(skipped),
             "workers": workers,
+            "batch_id": batch_id,
         })
 
     @app.post("/api/jobs/<int:job_id>/delete")

@@ -2902,6 +2902,7 @@ def _new_job_row(
     retry_action: str | None = None,
     email: str | None = None,
     account_id: int | None = None,
+    batch_id: str | None = None,
 ) -> dict:
     job_uuid = str(uuid.uuid4())
     log_file = str(_LOG_DIR / f"{job_uuid}.log")
@@ -2914,6 +2915,7 @@ def _new_job_row(
         "root_job_id": root_job_id,
         "retry_attempt": int(retry_attempt or 0),
         "retry_action": retry_action,
+        "batch_id": str(batch_id or "").strip() or None,
         "email_source": email_source,
         "email": email,
         "status": "pending",
@@ -2927,11 +2929,11 @@ def _new_job_row(
     }
 
 
-def create_job(email_source: str) -> dict:
+def create_job(email_source: str, *, batch_id: str | None = None) -> dict:
     """创建一个首次执行的 pending 注册任务。"""
     with _LOCK:
         rows = _load_jobs()
-        row = _new_job_row(rows, email_source=email_source)
+        row = _new_job_row(rows, email_source=email_source, batch_id=batch_id)
         rows.append(row)
         _save_jobs(rows)
         return dict(row)
@@ -2944,6 +2946,7 @@ def create_retry_job(
     email_source: str,
     email: str | None = None,
     account_id: int | None = None,
+    batch_id: str | None = None,
 ) -> tuple[dict, bool]:
     """原子创建重试子任务；同一任务链已有活跃任务时直接复用。"""
     with _LOCK:
@@ -2982,6 +2985,7 @@ def create_retry_job(
             retry_action=("codex" if job_type == "codex_retry" else "registration"),
             email=email,
             account_id=account_id,
+            batch_id=batch_id,
         )
         rows.append(row)
         _save_jobs(rows)
@@ -3019,6 +3023,57 @@ def update_job(
         if network_traffic is not None:
             row["network_traffic"] = dict(network_traffic)
         _save_jobs(rows)
+
+
+_CURRENT_BATCH_META_KEY = "current_registration_batch"
+
+
+def get_storage_meta(key: str) -> str | None:
+    _ensure_sqlite()
+    with closing(_sqlite_conn()) as conn:
+        row = conn.execute("SELECT value FROM storage_meta WHERE key=?", (str(key),)).fetchone()
+    return None if row is None else str(row["value"] or "")
+
+
+def set_storage_meta(key: str, value: str) -> None:
+    _ensure_sqlite()
+    with closing(_sqlite_conn()) as conn:
+        with conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO storage_meta(key, value) VALUES(?, ?)",
+                (str(key), str(value or "")),
+            )
+
+
+def save_current_batch(payload: dict | None) -> None:
+    data = dict(payload or {})
+    set_storage_meta(_CURRENT_BATCH_META_KEY, json.dumps(data, ensure_ascii=False))
+
+
+def get_current_batch() -> dict:
+    raw = get_storage_meta(_CURRENT_BATCH_META_KEY)
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def list_jobs_by_batch(batch_id: str) -> list[dict]:
+    """返回同一批次的全部任务，按 id 升序。"""
+    target = str(batch_id or "").strip()
+    if not target:
+        return []
+    _ensure_sqlite()
+    with closing(_sqlite_conn()) as conn:
+        rows = conn.execute(
+            "SELECT payload FROM registration_jobs "
+            "WHERE json_extract(payload, '$.batch_id') = ? ORDER BY id",
+            (target,),
+        ).fetchall()
+    return [json.loads(row["payload"]) for row in rows]
 
 
 def list_jobs(limit: int = 100) -> list[dict]:

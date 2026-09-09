@@ -292,6 +292,12 @@
       stroke: currentColor; fill: none;
     }
     .sidebar-item-label { flex: 1; min-width: 0; line-height: 1.2; }
+    .runtime-nav-dot {
+      width: 8px; height: 8px; border-radius: 999px; background: #f59e0b;
+      box-shadow: 0 0 0 3px rgba(245,158,11,.16); flex-shrink: 0;
+    }
+    .runtime-nav-dot.hidden { display: none; }
+    .runtime-nav-dot.is-idle { background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,.12); }
     .sidebar-footer {
       flex-shrink: 0; padding: 10px; border-top: 1px solid #f1f5f9;
       display: flex; flex-direction: column; gap: 2px;
@@ -318,6 +324,96 @@
       transition: background .15s ease, color .15s ease;
     }
     .sidebar-logout button:hover { color: #b3261e; background: #fff0ef; }
+
+    .register-start-grid {
+      display: grid; gap: 16px;
+      grid-template-columns: minmax(0, 1fr) 280px;
+    }
+    .register-start-fields { display: grid; gap: 16px; }
+    .register-start-fields .row { margin: 0; }
+    .register-start-preview {
+      border: 1px solid #ebeef5; border-radius: 12px; background: #f8fafc;
+      padding: 16px;
+    }
+    .register-start-preview .muted { font-size: 12px; }
+    .register-start-preview strong { display: block; margin: 6px 0 8px; font-size: 20px; }
+    .register-start-preview-nums {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px;
+    }
+    .register-start-preview-nums div {
+      background: #fff; border-radius: 10px; padding: 10px 8px; text-align: center;
+    }
+    .register-start-preview-nums b { display: block; font-size: 18px; }
+    .register-start-preview-nums span { color: #909399; font-size: 12px; }
+    .runtime-head {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 12px; flex-wrap: wrap; margin-bottom: 4px;
+    }
+    .runtime-head-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .runtime-metrics {
+      display: grid; grid-template-columns: repeat(8, minmax(0, 1fr));
+      border: 1px solid var(--line); border-radius: 10px; background: #fff; overflow: hidden;
+    }
+    .runtime-metric { padding: 14px 16px; border-right: 1px solid #edf1f5; min-width: 0; }
+    .runtime-metric:last-child { border-right: none; }
+    .runtime-metric span { display: block; color: #909399; font-size: 12px; }
+    .runtime-metric b { display: block; margin-top: 8px; font-size: 22px; font-variant-numeric: tabular-nums; }
+    .runtime-metric b.is-good { color: var(--green); }
+    .runtime-metric b.is-bad { color: var(--red); }
+    .runtime-progress-top {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 12px; flex-wrap: wrap;
+    }
+    .runtime-progress-pct { text-align: right; }
+    .runtime-progress-pct b { display: block; font-size: 32px; line-height: 1; font-variant-numeric: tabular-nums; }
+    .runtime-bar { height: 10px; border-radius: 999px; background: #eef2f6; overflow: hidden; }
+    .runtime-bar > i { display: block; height: 100%; width: 0; background: #3b82f6; border-radius: inherit; transition: width .4s ease; }
+    .runtime-meta {
+      display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px;
+    }
+    .runtime-meta-item {
+      border: 1px solid #ebeef5; border-radius: 10px; background: #f8fafc; padding: 12px;
+    }
+    .runtime-meta-item span { display: block; color: #909399; font-size: 12px; }
+    .runtime-meta-item b { display: block; margin-top: 6px; font-size: 14px; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .runtime-results-toggle {
+      width: 100%; display: flex; align-items: center; gap: 10px;
+      border: 0; background: transparent; padding: 0; cursor: pointer; text-align: left;
+    }
+    .runtime-log-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+    .runtime-log-tools input { flex: 1; min-width: 180px; margin-top: 0; }
+    .runtime-log-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+    .runtime-log-filters button {
+      min-height: 30px; border: 0; border-radius: 999px; padding: 0 10px;
+      background: #f2f4f7; color: #475467; font-weight: 700; font-size: 12px; cursor: pointer;
+    }
+    .runtime-log-filters button.active { background: #0f172a; color: #fff; }
+    .runtime-log-box {
+      margin-top: 10px; background: #f8fafc; color: #334155; border: 1px solid #e2e8f0;
+      border-radius: 10px; padding: 12px; min-height: 360px; max-height: 540px; overflow: auto;
+      font-family: ui-monospace, Consolas, monospace; font-size: 12px; line-height: 1.6;
+      white-space: pre-wrap; overflow-wrap: anywhere;
+    }
+    .runtime-log-line { border-bottom: 1px solid rgba(15,23,42,.06); padding: 2px 0; }
+    .runtime-log-line .t { color: #0284c7; }
+    .runtime-log-line.is-error { color: #be123c; }
+    .runtime-log-line.is-warn { color: #b45309; }
+    .runtime-log-line.is-success { color: #15803d; }
+    .runtime-log-line.is-info { color: #334155; }
+    .runtime-live { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; }
+    .runtime-live i { width: 8px; height: 8px; border-radius: 999px; background: #94a3b8; display: inline-block; }
+    .runtime-live.is-on i { background: #f59e0b; animation: runtimePulse 1.2s ease-in-out infinite; }
+    @keyframes runtimePulse { 50% { opacity: .35; } }
+    @media (max-width: 1100px) {
+      .runtime-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .runtime-metric:nth-child(4n) { border-right: none; }
+      .runtime-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .register-start-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 700px) {
+      .runtime-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .runtime-metric { border-bottom: 1px solid #edf1f5; }
+    }
 
     /* ---- 新版注册区（工具条 + 表，旧区不改） ---- */
     .jobs-panel-v2 {
@@ -465,16 +561,21 @@
       margin-top: 8px; color: #909399; font-size: 12px;
       line-height: 1.4; user-select: none; text-align: center;
     }
+    .register-start-fields .el-input-number,
     .jobs-toolbar-v2 .el-input-number,
     .accounts-filter-v2 .el-input-number {
       position: relative; display: inline-flex; width: 150px; height: 40px;
       border: 1px solid #dcdfe6; border-radius: 6px; background: #fff;
       box-sizing: border-box; overflow: hidden; vertical-align: middle;
     }
+    .register-start-fields .el-input-number { width: 100%; }
+    .register-start-fields .el-input-number:hover,
+    .register-start-fields .el-input-number:focus-within,
     .jobs-toolbar-v2 .el-input-number:hover,
     .jobs-toolbar-v2 .el-input-number:focus-within,
     .accounts-filter-v2 .el-input-number:hover,
     .accounts-filter-v2 .el-input-number:focus-within { border-color: #409eff; }
+    .register-start-fields .el-input-number input,
     .jobs-toolbar-v2 .el-input-number input,
     .accounts-filter-v2 .el-input-number input {
       flex: 1; width: 100%; min-width: 0; height: 100%; margin: 0;
@@ -483,12 +584,16 @@
       color: #606266; font-size: 14px; box-sizing: border-box;
       -moz-appearance: textfield; appearance: textfield;
     }
+    .register-start-fields .el-input-number input::-webkit-outer-spin-button,
+    .register-start-fields .el-input-number input::-webkit-inner-spin-button,
     .jobs-toolbar-v2 .el-input-number input::-webkit-outer-spin-button,
     .jobs-toolbar-v2 .el-input-number input::-webkit-inner-spin-button,
     .accounts-filter-v2 .el-input-number input::-webkit-outer-spin-button,
     .accounts-filter-v2 .el-input-number input::-webkit-inner-spin-button {
       -webkit-appearance: none; margin: 0;
     }
+    .register-start-fields .el-input-number__increase,
+    .register-start-fields .el-input-number__decrease,
     .jobs-toolbar-v2 .el-input-number__increase,
     .jobs-toolbar-v2 .el-input-number__decrease,
     .accounts-filter-v2 .el-input-number__increase,
@@ -499,26 +604,34 @@
       align-items: center; justify-content: center; box-sizing: border-box;
       line-height: 1;
     }
+    .register-start-fields .el-input-number__increase,
     .jobs-toolbar-v2 .el-input-number__increase,
     .accounts-filter-v2 .el-input-number__increase {
       top: 0; border-bottom: 1px solid #dcdfe6; border-radius: 0 5px 0 0;
     }
+    .register-start-fields .el-input-number__decrease,
     .jobs-toolbar-v2 .el-input-number__decrease,
     .accounts-filter-v2 .el-input-number__decrease {
       bottom: 0; border-radius: 0 0 5px 0;
     }
+    .register-start-fields .el-input-number__increase:hover,
+    .register-start-fields .el-input-number__decrease:hover,
     .jobs-toolbar-v2 .el-input-number__increase:hover,
     .jobs-toolbar-v2 .el-input-number__decrease:hover,
     .accounts-filter-v2 .el-input-number__increase:hover,
     .accounts-filter-v2 .el-input-number__decrease:hover {
       color: #409eff; background: #f0f7ff;
     }
+    .register-start-fields .el-input-number__increase:disabled,
+    .register-start-fields .el-input-number__decrease:disabled,
     .jobs-toolbar-v2 .el-input-number__increase:disabled,
     .jobs-toolbar-v2 .el-input-number__decrease:disabled,
     .accounts-filter-v2 .el-input-number__increase:disabled,
     .accounts-filter-v2 .el-input-number__decrease:disabled {
       color: #c0c4cc; cursor: not-allowed; background: #f5f7fa;
     }
+    .register-start-fields .el-input-number__increase svg,
+    .register-start-fields .el-input-number__decrease svg,
     .jobs-toolbar-v2 .el-input-number__increase svg,
     .jobs-toolbar-v2 .el-input-number__decrease svg,
     .accounts-filter-v2 .el-input-number__increase svg,
@@ -2036,6 +2149,13 @@
       </svg>
       <span class="sidebar-item-label">注册</span>
     </button>
+    <button type="button" data-tab="runtime" class="sidebar-item">
+      <svg class="sidebar-item-icon" viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M7 8h2M7 12h4"/>
+      </svg>
+      <span class="sidebar-item-label">运行监控</span>
+      <span class="runtime-nav-dot hidden" id="runtimeNavDot" aria-hidden="true"></span>
+    </button>
     <button type="button" data-tab="accounts" class="sidebar-item">
       <svg class="sidebar-item-icon" viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
@@ -2145,37 +2265,165 @@
       </div>
     </div>
 
+    <section class="card" aria-label="新建注册任务">
+      <div class="head">
+        <h2>新建注册任务</h2>
+        <p>设置本次数量和并发。邮箱、代理和驱动沿用配置页；启动后到「运行监控」盯进度和日志。</p>
+      </div>
+      <div class="body">
+        <div class="register-start-grid">
+          <div class="register-start-fields">
+            <div class="row">
+              <label class="fld">注册数量
+                <span class="hint">一次提交算一轮，最多 200 个。</span>
+                <span class="el-input-number">
+                  <input id="regCountV2" type="number" min="1" max="200" value="1" inputmode="numeric">
+                  <button type="button" class="el-input-number__increase" data-step-for="regCountV2" data-step="1" aria-label="增加">
+                    <svg viewBox="0 0 24 24"><polyline points="6 14 12 8 18 14"/></svg>
+                  </button>
+                  <button type="button" class="el-input-number__decrease" data-step-for="regCountV2" data-step="-1" aria-label="减少">
+                    <svg viewBox="0 0 24 24"><polyline points="6 10 12 16 18 10"/></svg>
+                  </button>
+                </span>
+              </label>
+              <label class="fld">并发线程数
+                <span class="hint">建议从 1–3 开始。</span>
+                <span class="el-input-number">
+                  <input id="regWorkersV2" type="number" min="1" max="16" value="3" inputmode="numeric">
+                  <button type="button" class="el-input-number__increase" data-step-for="regWorkersV2" data-step="1" aria-label="增加">
+                    <svg viewBox="0 0 24 24"><polyline points="6 14 12 8 18 14"/></svg>
+                  </button>
+                  <button type="button" class="el-input-number__decrease" data-step-for="regWorkersV2" data-step="-1" aria-label="减少">
+                    <svg viewBox="0 0 24 24"><polyline points="6 10 12 16 18 10"/></svg>
+                  </button>
+                </span>
+              </label>
+            </div>
+            <div class="row">
+              <div class="action-cell">
+                <button type="button" class="btn primary" id="btnStartV2">开始注册</button>
+                <button type="button" class="btn" id="btnOpenRuntimeFromRegister">打开运行监控</button>
+              </div>
+            </div>
+            <div id="regWarnV2"></div>
+          </div>
+          <div class="register-start-preview">
+            <div class="muted">任务预览</div>
+            <strong id="registerPreviewTitle">等待启动</strong>
+            <p class="muted" id="registerPreviewHint">启动后可在运行监控查看完整进度。</p>
+            <div class="register-start-preview-nums">
+              <div><b id="registerPreviewCount">1</b><span>目标账号</span></div>
+              <div><b id="registerPreviewWorkers">3</b><span>并发数</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ============ 运行监控 ============ -->
+  <div id="tab-runtime" class="hidden">
+    <div class="runtime-head">
+      <div>
+        <h1 class="register-title">运行监控</h1>
+        <p class="muted" style="margin-top:4px;">查看本轮进度、实时日志和任务明细。次要操作仍在下方任务表。</p>
+      </div>
+      <div class="runtime-head-actions">
+        <span class="pill status-success" id="runtimeBadge">空闲</span>
+        <button type="button" class="btn" id="btnRuntimeGoRegister">新建任务</button>
+        <button type="button" class="btn" id="btnRuntimeGoAccounts">账号结果</button>
+      </div>
+    </div>
+
+    <div class="runtime-metrics" id="runtimeMetrics">
+      <div class="runtime-metric"><span>目标账号</span><b id="rtTarget">0</b></div>
+      <div class="runtime-metric"><span>已完成</span><b id="rtCompleted">0</b></div>
+      <div class="runtime-metric"><span>成功</span><b id="rtSuccess" class="is-good">0</b></div>
+      <div class="runtime-metric"><span>失败</span><b id="rtFailure" class="is-bad">0</b></div>
+      <div class="runtime-metric"><span>待处理</span><b id="rtPending">0</b></div>
+      <div class="runtime-metric"><span>并发数</span><b id="rtWorkers">0</b></div>
+      <div class="runtime-metric"><span>成功率</span><b id="rtRate">—</b></div>
+      <div class="runtime-metric"><span>日志行</span><b id="rtLogCount">0</b></div>
+    </div>
+
+    <section class="card">
+      <div class="head">
+        <div class="runtime-progress-top">
+          <div>
+            <h2>注册进度 <span class="runtime-live" id="runtimeLive"><i></i><span>未运行</span></span></h2>
+            <p id="runtimeStageText">当前没有运行中的注册任务</p>
+          </div>
+          <div class="runtime-head-actions">
+            <button type="button" class="btn danger" id="btnStopBatch" disabled>停止本轮</button>
+            <div class="runtime-progress-pct">
+              <b id="rtPercent">0%</b>
+              <div class="muted" id="rtFraction">0 / 0</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="body">
+        <div class="runtime-bar" role="progressbar" aria-label="账号注册进度"><i id="rtBar"></i></div>
+        <div class="runtime-meta">
+          <div class="runtime-meta-item"><span>已用时</span><b id="rtElapsed">—</b></div>
+          <div class="runtime-meta-item"><span>开始时间</span><b id="rtStarted">—</b></div>
+          <div class="runtime-meta-item"><span>结束时间</span><b id="rtFinished">—</b></div>
+          <div class="runtime-meta-item"><span>当前阶段 / 邮箱</span><b id="rtCurrent">—</b></div>
+        </div>
+        <p class="muted" id="runtimeFooterHint" style="margin-top:12px;">当前没有运行中的注册任务</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="head">
+        <button type="button" class="runtime-results-toggle" id="btnToggleRuntimeResults" aria-expanded="false">
+          <span>本次结果</span>
+          <span class="pill status-success" id="rtResultSuccess">成功 0</span>
+          <span class="pill status-failed" id="rtResultFailure">失败 0</span>
+          <span class="muted" id="rtResultTotal">共 0 条</span>
+          <span class="muted" style="margin-left:auto;" id="rtResultToggleLabel">展开</span>
+        </button>
+      </div>
+      <div class="body hidden" id="runtimeResultsBody">
+        <div class="runtime-log-filters" id="runtimeResultTabs">
+          <button type="button" class="active" data-result-tab="all">全部</button>
+          <button type="button" data-result-tab="success">成功</button>
+          <button type="button" data-result-tab="failure">失败</button>
+        </div>
+        <div id="runtimeResultsList" class="muted" style="margin-top:12px;">暂无结果</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="head">
+        <h2>实时日志</h2>
+        <p>合并本轮所有任务的输出，单任务完整日志仍可在下方表格打开。</p>
+      </div>
+      <div class="body">
+        <div class="runtime-log-tools">
+          <input id="runtimeLogQuery" type="search" placeholder="搜索日志内容或时间…" autocomplete="off">
+          <div class="runtime-log-filters" id="runtimeLogFilters">
+            <button type="button" class="active" data-log-level="all">全部</button>
+            <button type="button" data-log-level="error">错误</button>
+            <button type="button" data-log-level="warn">警告</button>
+            <button type="button" data-log-level="success">成功</button>
+            <button type="button" data-log-level="info">流程</button>
+          </div>
+          <label class="inline-num"><input id="runtimeAutoScroll" type="checkbox" checked> 自动滚动</label>
+          <button type="button" class="btn" id="btnCopyRuntimeLogs">复制</button>
+          <button type="button" class="btn" id="btnClearRuntimeLogs">清空视图</button>
+        </div>
+        <div class="runtime-log-box" id="runtimeLogBox">等待日志…启动任务后会在这里实时输出。</div>
+      </div>
+    </section>
+
     <section class="jobs-panel-v2" id="jobsPanelV2" aria-label="注册任务">
       <div class="jobs-toolbar-v2" id="jobsToolbarV2">
         <button type="button" class="jobs-tb-btn jobs-tb-btn--retry" id="btnRetrySelectedJobsV2" disabled title="重试选中的失败、已停止或已取消任务">重试选中</button>
         <button type="button" class="jobs-tb-btn jobs-tb-btn--danger" id="btnDeleteSelectedJobsV2" disabled title="删除选中的非运行中任务，并同时删除对应日志">删除选中</button>
         <button type="button" class="jobs-tb-btn" id="btnCancelPendingV2" title="把所有排队任务标记为已取消">取消全部排队</button>
         <button type="button" class="jobs-tb-btn" id="btnRefreshJobsV2" title="手动刷新任务列表">刷新</button>
-        <label class="jobs-tb-field">注册数量
-          <span class="el-input-number">
-            <input id="regCountV2" type="number" min="1" max="200" value="1" inputmode="numeric">
-            <button type="button" class="el-input-number__increase" data-step-for="regCountV2" data-step="1" aria-label="增加">
-              <svg viewBox="0 0 24 24"><polyline points="6 14 12 8 18 14"/></svg>
-            </button>
-            <button type="button" class="el-input-number__decrease" data-step-for="regCountV2" data-step="-1" aria-label="减少">
-              <svg viewBox="0 0 24 24"><polyline points="6 10 12 16 18 10"/></svg>
-            </button>
-          </span>
-        </label>
-        <label class="jobs-tb-field">并发线程数
-          <span class="el-input-number">
-            <input id="regWorkersV2" type="number" min="1" max="16" value="3" inputmode="numeric">
-            <button type="button" class="el-input-number__increase" data-step-for="regWorkersV2" data-step="1" aria-label="增加">
-              <svg viewBox="0 0 24 24"><polyline points="6 14 12 8 18 14"/></svg>
-            </button>
-            <button type="button" class="el-input-number__decrease" data-step-for="regWorkersV2" data-step="-1" aria-label="减少">
-              <svg viewBox="0 0 24 24"><polyline points="6 10 12 16 18 10"/></svg>
-            </button>
-          </span>
-        </label>
-        <button type="button" class="jobs-tb-btn jobs-tb-btn--primary" id="btnStartV2">开始注册</button>
       </div>
-      <div id="regWarnV2"></div>
       <div class="jobs-table-v2-wrap">
         <table class="jobs-table-v2">
           <colgroup>
@@ -2621,6 +2869,13 @@ let JOB_STATUS_COUNTS = {};
 let jobsRenderSignature = '';
 const JOB_SELECTED = new Set();
 let activeLogJob = null, logTimer = null, jobsTimer = null;
+let RUNTIME_STATE = { running: false, batch_id: '', started_at: null, finished_at: null };
+let RUNTIME_LOGS = [];
+let runtimeAfterId = 0;
+let runtimeLogLevel = 'all';
+let runtimeResultTab = 'all';
+let runtimeResultsExpanded = false;
+let runtimeElapsedTimer = null;
 
 // ---------- 分页状态 ----------
 const PAGERS = {
@@ -2825,7 +3080,7 @@ function debounce(fn, wait=250) {
 
 // ---------- Tab 切换 ----------
 function activateTab(tab, persist=true) {
-  const allowed = ['register','accounts','codex','outlook','config'];
+  const allowed = ['register','runtime','accounts','codex','outlook','config'];
   if (!allowed.includes(tab)) tab = 'register';
   $$('nav button').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
   allowed.forEach(t => $('#tab-'+t).classList.toggle('hidden', t !== tab));
@@ -2834,7 +3089,8 @@ function activateTab(tab, persist=true) {
   if (tab === 'codex') loadCodex();
   if (tab === 'outlook') loadOutlook();
   if (tab === 'config') loadConfig();
-  if (tab === 'register') refreshJobs();
+  if (tab === 'register' || tab === 'runtime') refreshJobs();
+  if (tab === 'runtime') refreshRuntime(true);
 }
 $$('nav button').forEach(b => b.addEventListener('click', () => activateTab(b.dataset.tab)));
 
@@ -2875,7 +3131,11 @@ async function startRegistrationFromInputs(countEl, workersEl, startBtn) {
     const warnEl = $('#regWarnV2'); if (warnEl) warnEl.innerHTML = warnHtml;
     const c2 = $('#regCountV2'); if (c2) c2.value = count;
     const w2 = $('#regWorkersV2'); if (w2) w2.value = workers;
+    updateRegisterPreview();
+    resetRuntimeLogView();
+    activateTab('runtime');
     refreshJobs();
+    refreshRuntime(true);
   } catch(e) {
     const warnEl = $('#regWarnV2'); if (warnEl) warnEl.innerHTML = `<div class="banner warn">${esc(e.message)}</div>`;
   }
@@ -2969,7 +3229,7 @@ function bindJobsBodyEvents(bodyEl) {
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
   }
-  document.querySelectorAll('#jobsToolbarV2 [data-step-for], #accountsFilterV2 [data-step-for]').forEach((btn) => {
+  document.querySelectorAll('#tab-register [data-step-for], #jobsToolbarV2 [data-step-for], #accountsFilterV2 [data-step-for]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       stepInputNumber(btn.dataset.stepFor, parseInt(btn.dataset.step, 10) || 0);
@@ -2978,6 +3238,73 @@ function bindJobsBodyEvents(bodyEl) {
   const selectAllV2 = $('#jobsSelectAllV2');
   if (selectAllV2) selectAllV2.addEventListener('change', (e) => syncJobsSelectAll(e.target.checked));
   bindJobsBodyEvents($('#jobsBodyV2'));
+})();
+
+(() => {
+  const openRuntime = $('#btnOpenRuntimeFromRegister');
+  if (openRuntime) openRuntime.addEventListener('click', () => activateTab('runtime'));
+  const goRegister = $('#btnRuntimeGoRegister');
+  if (goRegister) goRegister.addEventListener('click', () => activateTab('register'));
+  const goAccounts = $('#btnRuntimeGoAccounts');
+  if (goAccounts) goAccounts.addEventListener('click', () => activateTab('accounts'));
+  const stopBatch = $('#btnStopBatch');
+  if (stopBatch) stopBatch.addEventListener('click', async () => {
+    if (!confirm('确定停止本轮尚未结束的任务吗？排队会直接取消，运行中的会在检查点退出。')) return;
+    stopBatch.disabled = true;
+    try {
+      const r = await api('/api/jobs/stop-batch', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}' });
+      showToast(`已请求停止 ${r.stopped_count || 0} 个任务`);
+      refreshRuntime(true);
+    } catch (e) {
+      showToast('停止本轮失败: ' + e.message);
+    } finally {
+      stopBatch.disabled = !RUNTIME_STATE.running;
+    }
+  });
+  const toggleResults = $('#btnToggleRuntimeResults');
+  if (toggleResults) toggleResults.addEventListener('click', () => {
+    runtimeResultsExpanded = !runtimeResultsExpanded;
+    const body = $('#runtimeResultsBody');
+    if (body) body.classList.toggle('hidden', !runtimeResultsExpanded);
+    toggleResults.setAttribute('aria-expanded', runtimeResultsExpanded ? 'true' : 'false');
+    const label = $('#rtResultToggleLabel');
+    if (label) label.textContent = runtimeResultsExpanded ? '收起' : '展开';
+  });
+  $$('#runtimeResultTabs [data-result-tab]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      runtimeResultTab = btn.dataset.resultTab || 'all';
+      $$('#runtimeResultTabs [data-result-tab]').forEach((x) => x.classList.toggle('active', x === btn));
+      refreshRuntime();
+    });
+  });
+  $$('#runtimeLogFilters [data-log-level]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      runtimeLogLevel = btn.dataset.logLevel || 'all';
+      $$('#runtimeLogFilters [data-log-level]').forEach((x) => x.classList.toggle('active', x === btn));
+      renderRuntimeLogs();
+    });
+  });
+  const query = $('#runtimeLogQuery');
+  if (query) query.addEventListener('input', debounce(renderRuntimeLogs, 150));
+  const copyBtn = $('#btnCopyRuntimeLogs');
+  if (copyBtn) copyBtn.addEventListener('click', async () => {
+    const text = RUNTIME_LOGS.map((item) => `[${item.time}] [#${item.job_id || ''} ${item.email || ''}] ${item.message}`.trim()).join('\n');
+    if (!text) { showToast('没有可复制的日志'); return; }
+    await copyText(text);
+  });
+  const clearBtn = $('#btnClearRuntimeLogs');
+  if (clearBtn) clearBtn.addEventListener('click', () => {
+    RUNTIME_LOGS = [];
+    renderRuntimeLogs();
+    showToast(RUNTIME_STATE.running ? '视图已清空，将继续接收新日志' : '日志视图已清空');
+  });
+  ['regCountV2', 'regWorkersV2'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', updateRegisterPreview);
+    el.addEventListener('change', updateRegisterPreview);
+  });
+  updateRegisterPreview();
 })();
 
 function renderJobs() {
@@ -3036,6 +3363,180 @@ function updateJobsSelectionUi(pageRows = null) {
     cbAll.indeterminate = checkedCount > 0 && checkedCount < selectableIds.length;
     cbAll.disabled = selectableIds.length === 0;
   }
+}
+
+function detectRuntimeLogTone(message, level) {
+  const text = String(message || '');
+  const lv = String(level || '').toUpperCase();
+  if (lv === 'ERROR' || lv === 'CRITICAL' || /(error|failed|failure|exception|traceback|拒绝|失败|异常|拦截|timeout|timed out)/i.test(text)) {
+    if (/(success|成功|完成)/i.test(text) && !/(fail|失败|error)/i.test(text)) return 'success';
+    return 'error';
+  }
+  if (lv === 'WARNING' || /(warn|warning|风险|注意|重试|retry)/i.test(text)) return 'warn';
+  if (/(success|成功|完成|imported|saved|已保存)/i.test(text)) return 'success';
+  if (/(stage|step|开始|启动|waiting|proxy|browser)/i.test(text)) return 'info';
+  return 'default';
+}
+function formatRuntimeDuration(seconds) {
+  const total = Math.max(0, Math.floor(seconds || 0));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+function updateRegisterPreview() {
+  const count = parseInt(($('#regCountV2')?.value || '1'), 10) || 1;
+  const workers = parseInt(($('#regWorkersV2')?.value || '3'), 10) || 1;
+  const countEl = $('#registerPreviewCount'); if (countEl) countEl.textContent = String(count);
+  const workersEl = $('#registerPreviewWorkers'); if (workersEl) workersEl.textContent = String(workers);
+  const title = $('#registerPreviewTitle');
+  const hint = $('#registerPreviewHint');
+  if (RUNTIME_STATE.running) {
+    if (title) title.textContent = '注册进行中';
+    if (hint) hint.textContent = '可到运行监控查看完整进度。';
+  } else {
+    if (title) title.textContent = '等待启动';
+    if (hint) hint.textContent = '启动后可在运行监控查看完整进度。';
+  }
+}
+function resetRuntimeLogView() {
+  RUNTIME_LOGS = [];
+  runtimeAfterId = 0;
+  const box = $('#runtimeLogBox');
+  if (box) box.textContent = '任务运行中，正在等待实时日志…';
+}
+function setRuntimeNavDot(running) {
+  const dot = $('#runtimeNavDot');
+  if (!dot) return;
+  dot.classList.remove('hidden', 'is-idle');
+  if (running) return;
+  dot.classList.add('is-idle');
+  if (!RUNTIME_STATE.batch_id) dot.classList.add('hidden');
+}
+function tickRuntimeElapsed() {
+  const el = $('#rtElapsed');
+  if (!el) return;
+  const started = RUNTIME_STATE.started_at ? new Date(RUNTIME_STATE.started_at).getTime() : 0;
+  if (!started) { el.textContent = '—'; return; }
+  const end = RUNTIME_STATE.running
+    ? Date.now()
+    : (RUNTIME_STATE.finished_at ? new Date(RUNTIME_STATE.finished_at).getTime() : Date.now());
+  el.textContent = formatRuntimeDuration((end - started) / 1000);
+}
+function renderRuntimeLogs() {
+  const box = $('#runtimeLogBox');
+  if (!box) return;
+  const q = String($('#runtimeLogQuery')?.value || '').trim().toLowerCase();
+  const filtered = RUNTIME_LOGS.filter((item) => {
+    if (runtimeLogLevel !== 'all' && item.tone !== runtimeLogLevel) return false;
+    if (!q) return true;
+    return `${item.time}\n#${item.job_id || ''}\n${item.email || ''}\n${item.message}`.toLowerCase().includes(q);
+  });
+  if (!filtered.length) {
+    box.textContent = RUNTIME_LOGS.length ? '没有符合筛选条件的日志。' : '等待日志…启动任务后会在这里实时输出。';
+    return;
+  }
+  const visible = filtered.slice(-400);
+  box.innerHTML = visible.map((item) => {
+    const prefix = item.job_id ? `[#${esc(item.job_id)}${item.email ? ' ' + item.email : ''}] ` : '';
+    return `<div class="runtime-log-line is-${esc(item.tone)}"><span class="t">[${esc(item.time)}]</span> ${prefix}${esc(item.message)}</div>`;
+  }).join('');
+  if ($('#runtimeAutoScroll')?.checked) box.scrollTop = box.scrollHeight;
+}
+function renderRuntimeResults(jobs) {
+  const list = $('#runtimeResultsList');
+  if (!list) return;
+  const successItems = (jobs || []).filter((j) => j.status === 'success');
+  const failureItems = (jobs || []).filter((j) => j.status === 'failed');
+  const visible = runtimeResultTab === 'success' ? successItems : runtimeResultTab === 'failure' ? failureItems : (jobs || []);
+  const successEl = $('#rtResultSuccess'); if (successEl) successEl.textContent = `成功 ${successItems.length}`;
+  const failEl = $('#rtResultFailure'); if (failEl) failEl.textContent = `失败 ${failureItems.length}`;
+  const totalEl = $('#rtResultTotal'); if (totalEl) totalEl.textContent = `共 ${(jobs || []).length} 条`;
+  if (!visible.length) {
+    list.className = 'muted';
+    list.textContent = RUNTIME_STATE.running ? '尚无落库结果，完成单个账号后会出现在这里。' : '暂无结果。可先去新建任务。';
+    return;
+  }
+  list.className = '';
+  list.innerHTML = visible.slice(0, 20).map((j) => {
+    const ok = j.status === 'success';
+    return `<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #edf1f5;">
+      ${pillV2(j.display_status || j.status)}
+      <div style="min-width:0;flex:1;">
+        <div style="font-weight:700;">${esc(j.email || ('#' + j.id))}</div>
+        <div class="muted" style="font-size:12px;">${esc(j.error_message || formatDateTime(j.completed_at || j.started_at))}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+function applyRuntimeSnapshot(snap, appendLogs) {
+  RUNTIME_STATE.running = !!snap.running;
+  RUNTIME_STATE.batch_id = snap.batch_id || '';
+  RUNTIME_STATE.started_at = snap.started_at || null;
+  RUNTIME_STATE.finished_at = snap.finished_at || null;
+  const setText = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+  setText('rtTarget', String(snap.target_count || 0));
+  setText('rtCompleted', String(snap.completed_count || 0));
+  setText('rtSuccess', String(snap.success_count || 0));
+  setText('rtFailure', String(snap.failure_count || 0));
+  setText('rtPending', String(snap.pending_count || 0));
+  setText('rtWorkers', String(snap.workers || 0));
+  setText('rtLogCount', String(snap.log_count || RUNTIME_LOGS.length || 0));
+  const rate = snap.completed_count > 0 ? `${Math.round((Number(snap.success_count || 0) / snap.completed_count) * 100)}%` : '—';
+  setText('rtRate', rate);
+  setText('rtPercent', `${Math.round(Number(snap.progress_percent || 0))}%`);
+  setText('rtFraction', `${snap.completed_count || 0} / ${snap.target_count || 0}`);
+  const bar = $('#rtBar'); if (bar) bar.style.width = `${Math.max(0, Math.min(100, Number(snap.progress_percent || 0)))}%`;
+  setText('rtStarted', snap.started_at ? formatDateTime(snap.started_at) : '—');
+  setText('rtFinished', snap.running ? '进行中' : (snap.finished_at ? formatDateTime(snap.finished_at) : '—'));
+  const current = [snap.current_stage, ...(snap.current_emails || []).slice(0, 2)].filter(Boolean).join(' · ') || '—';
+  setText('rtCurrent', current);
+  const badge = $('#runtimeBadge');
+  if (badge) {
+    badge.textContent = snap.running ? '任务运行中' : (snap.last_error ? '异常结束' : '空闲');
+    badge.className = `pill ${snap.running ? 'status-running' : (snap.last_error ? 'status-failed' : 'status-success')}`;
+  }
+  const live = $('#runtimeLive');
+  if (live) {
+    live.classList.toggle('is-on', !!snap.running);
+    live.querySelector('span').textContent = snap.running ? '执行中' : '未运行';
+  }
+  const stopBtn = $('#btnStopBatch'); if (stopBtn) stopBtn.disabled = !snap.running;
+  const stage = $('#runtimeStageText');
+  if (stage) stage.textContent = snap.running
+    ? `${snap.current_stage || '执行中'}${snap.current_email ? ' · ' + snap.current_email : ''}`
+    : (snap.last_error ? `最近错误：${snap.last_error}` : '当前没有运行中的注册任务');
+  const hint = $('#runtimeFooterHint');
+  if (hint) hint.textContent = snap.last_error
+    ? `最近错误：${snap.last_error}`
+    : (snap.running ? `任务执行中，日志会持续同步 · 批次 ${snap.batch_id || '—'}` : `当前没有运行中的注册任务 · 批次 ${snap.batch_id || '—'}`);
+  setRuntimeNavDot(!!snap.running);
+  tickRuntimeElapsed();
+  if (runtimeElapsedTimer) clearInterval(runtimeElapsedTimer);
+  runtimeElapsedTimer = snap.running ? setInterval(tickRuntimeElapsed, 1000) : null;
+  if (appendLogs) {
+    const fresh = snap.logs || [];
+    if (fresh.length) {
+      RUNTIME_LOGS = RUNTIME_LOGS.concat(fresh.map((item) => ({
+        ...item,
+        tone: detectRuntimeLogTone(item.message, item.level),
+      }))).slice(-2000);
+      runtimeAfterId = Number(fresh[fresh.length - 1].id || runtimeAfterId);
+    } else if (Number(snap.latest_log_id || 0) > runtimeAfterId) {
+      runtimeAfterId = Number(snap.latest_log_id || 0);
+    }
+    renderRuntimeLogs();
+  }
+  renderRuntimeResults(snap.jobs || []);
+  updateRegisterPreview();
+}
+async function refreshRuntime(force=false) {
+  try {
+    const snap = await api(`/api/runtime?after_id=${encodeURIComponent(runtimeAfterId)}`);
+    applyRuntimeSnapshot(snap, true);
+    if (force) refreshJobs();
+  } catch (e) {}
 }
 
 async function refreshJobs() {
@@ -3212,6 +3713,7 @@ async function retryJob(jobId, btn) {
     showToast(r.message || '已提交重试任务');
     JOB_SELECTED.delete(Number(jobId));
     refreshJobs();
+    refreshRuntime(true);
   } catch (e) {
     showToast('重试失败: ' + e.message);
     btn.disabled = false;
@@ -3234,6 +3736,7 @@ async function retrySelectedJobs() {
     const reusedCount = r.reused_count || 0;
     showToast(`已提交 ${r.started_count || 0} 个${reusedCount ? `，复用 ${reusedCount} 个` : ''}${skippedCount ? `，跳过 ${skippedCount} 个` : ''}`);
     refreshJobs();
+    refreshRuntime(true);
   } catch (e) {
     showToast('批量重试失败: ' + e.message);
   } finally {
@@ -6818,7 +7321,16 @@ document.addEventListener('click', (e) => {
 // ---------- 初始化 ----------
 loadSummary();
 activateTab(localStorage.getItem('gpt_console_active_tab') || 'register', false);
-jobsTimer = setInterval(() => { if (!$('#tab-register').classList.contains('hidden')) refreshJobs(); }, 10000);
+refreshRuntime(true);
+jobsTimer = setInterval(() => {
+  const runtimeOpen = $('#tab-runtime') && !$('#tab-runtime').classList.contains('hidden');
+  const registerOpen = $('#tab-register') && !$('#tab-register').classList.contains('hidden');
+  if (runtimeOpen || registerOpen) refreshJobs();
+  if (runtimeOpen) refreshRuntime();
+}, 10000);
+setInterval(() => {
+  if ($('#tab-runtime') && !$('#tab-runtime').classList.contains('hidden') && RUNTIME_STATE.running) refreshRuntime();
+}, 1500);
 setInterval(loadSummary, 30000);
 setInterval(() => { if (!$('#tab-accounts').classList.contains('hidden')) pollAccountPlanStatuses(); }, 10000);
 </script>
