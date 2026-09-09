@@ -19,6 +19,7 @@ from core.humanize import delay as human_delay
 # 复用 Roxy 注册流程里已维护好的页面操作函数。
 from core.roxy_registration import (  # noqa: F401
     _maybe_accept, _submit_email_and_wait_next, _fill_password_page_if_present,
+    _is_signup_password_page,
     _clear_otp_inputs, _type_otp, _click_continue, _wait_after_email_otp_submit,
     _click_resend_email_otp, _complete_profile_page, _fetch_chatgpt_session, _check_manual_stop,
     _safe_get,
@@ -118,6 +119,10 @@ def run_cloak_registration(
                     current_otp = None
                     continue
             logger.info("[Cloak注册][OTP] 收到验证码：%s", current_otp)
+            if _is_signup_password_page(driver):
+                filled = _fill_password_page_if_present(driver, email, timeout=25)
+                if filled:
+                    openai_password = filled
             _clear_otp_inputs(driver)
             _type_otp(driver, current_otp)
             human_delay("otp_input")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import random
+import re
 import string
 import time
 import uuid
@@ -985,10 +986,10 @@ def _wait_email_submit_next_state(driver, email: str, timeout: int = 18) -> str:
             return "logged_in"
         if _is_login_password_page(driver):
             return "login_password"
-        if _is_email_verification_page(driver):
-            return "otp"
         if _is_signup_password_page(driver):
             return "password"
+        if _is_email_verification_page(driver):
+            return "otp"
         state = _email_input_value_state(driver)
         last = state
         inputs = state.get("inputs") or []
@@ -1136,11 +1137,16 @@ def _is_email_verification_page(driver) -> bool:
         url = ''
     if '/log-in/password' in url:
         return False
+    # 密码框已经出现时，即使 URL 仍是 email-verification，也按设置密码处理。
+    if _is_signup_password_page(driver):
+        return False
     if 'email-verification' in url:
         return True
     state = _email_otp_page_state(driver)
     attrs = ' '.join(' '.join(str(i.get(k) or '') for k in ('type','name','id','autocomplete','inputmode')) for i in (state.get('inputs') or [])).lower()
-    return 'one-time-code' in attrs or 'otp' in attrs or 'code' in attrs
+    return 'one-time-code' in attrs or 'otp' in attrs or bool(
+        re.search(r'(?:^|[\s_-])code(?:$|[\s_-])', attrs)
+    )
 
 
 def _clear_otp_inputs(driver) -> None:
@@ -2381,6 +2387,10 @@ def run_roxy_registration(
                     current_otp = None
                     continue
             logger.info("[Roxy注册][OTP] 收到验证码：%s", current_otp)
+            if _is_signup_password_page(driver):
+                filled = _fill_password_page_if_present(driver, email, timeout=25)
+                if filled:
+                    openai_password = filled
             _clear_otp_inputs(driver)
             _type_otp(driver, current_otp)
             logger.info("[Roxy注册][OTP] 已填写邮箱验证码")

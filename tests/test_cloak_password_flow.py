@@ -16,6 +16,8 @@ from core.cloakbrowser_driver import CloakElement, CloakSeleniumDriver
 from core.roxy_registration import (
     _click_continue_with_password_if_present,
     _fill_password_page_if_present,
+    _is_email_verification_page,
+    _wait_email_submit_next_state,
 )
 
 
@@ -275,6 +277,13 @@ class FillPasswordPageTests(unittest.TestCase):
                         "ariaDisabled": "",
                     }
                 if "autocomplete" in s and "inputs" in s and "forms" in s:
+                    if self.phase == "done":
+                        return {
+                            "url": self.current_url,
+                            "inputs": [{"type": "text", "name": "code", "visible": True, "autocomplete": "one-time-code"}],
+                            "forms": [{"action": ""}],
+                            "buttons": [{"type": "submit", "visible": True, "disabled": False}],
+                        }
                     return {
                         "url": self.current_url,
                         "inputs": [{"type": "password", "name": "password", "visible": True, "autocomplete": "new-password"}],
@@ -304,6 +313,94 @@ class FillPasswordPageTests(unittest.TestCase):
         src = Path("core/cloakbrowser_registration.py").read_text(encoding="utf-8")
         self.assertIn("_fill_password_page_if_present(driver, email, timeout=25)", src)
         self.assertIn('"registration_password": openai_password', src)
+
+
+class PasswordPageTakesPrecedenceTests(unittest.TestCase):
+    """email-verification URL 上如果已经出现密码框，必须走设置密码，而不是去找 OTP。"""
+
+    class _Driver:
+        def __init__(self):
+            self.current_url = "https://auth.openai.com/email-verification"
+            self.phase = "password"
+
+        def execute_script(self, script, *args):
+            s = script or ""
+            if "one-time-code" in s and "buttons" in s:
+                if self.phase == "otp":
+                    return {
+                        "url": self.current_url,
+                        "inputs": [{"autocomplete": "one-time-code", "name": "code"}],
+                        "buttons": [],
+                        "errors": [],
+                        "text": "",
+                    }
+                return {
+                    "url": self.current_url,
+                    "inputs": [{"type": "password", "name": "password", "autocomplete": "new-password"}],
+                    "buttons": [{"text": "Continue"}],
+                    "errors": [],
+                    "text": "Create a password",
+                }
+            if "continuewithpassword" in s or "isPasswordCreate" in s:
+                return {"ok": False, "reason": "missing_continue_with_password"}
+            if "autocomplete" in s and "inputs" in s and "forms" in s:
+                if self.phase == "otp":
+                    return {
+                        "url": self.current_url,
+                        "inputs": [{"type": "text", "name": "code", "visible": True, "autocomplete": "one-time-code"}],
+                        "forms": [{"action": ""}],
+                        "buttons": [{"type": "submit", "visible": True, "disabled": False}],
+                    }
+                return {
+                    "url": self.current_url,
+                    "inputs": [{"type": "password", "name": "password", "visible": True, "autocomplete": "new-password"}],
+                    "forms": [{"action": ""}],
+                    "buttons": [{"type": "submit", "visible": True, "disabled": False}],
+                }
+            if "password_targets" in s or ('input[type="password"]' in s and "missing_password_input" in s):
+                return {
+                    "ok": True,
+                    "reason": "password_targets",
+                    "input": type("El", (), {"click": lambda self: None, "send_keys": lambda self, *a: None})(),
+                    "button": type("El", (), {"click": lambda self: None})(),
+                }
+            if "enabled_submit_target" in s or "missing_enabled_submit" in s:
+                self.phase = "otp"
+                return {
+                    "ok": True,
+                    "reason": "enabled_submit_target",
+                    "button": type("El", (), {"click": lambda self: None})(),
+                    "text": "Continue",
+                    "type": "submit",
+                    "dd": "Continue",
+                    "ariaDisabled": "",
+                }
+            return {}
+
+        def execute_cdp_cmd(self, cmd, params=None):
+            return None
+
+    def test_email_verification_url_with_password_input_is_not_otp_page(self):
+        self.assertFalse(_is_email_verification_page(self._Driver()))
+
+    def test_fill_password_when_verification_url_shows_password_field(self):
+        driver = self._Driver()
+        with patch("core.roxy_registration.human_delay"), \
+             patch("core.roxy_registration.time.sleep"), \
+             patch("core.roxy_registration._browser_actions_enabled", return_value=False), \
+             patch("core.roxy_registration._registration_password", return_value="Aa1!Bb2@Cc3#"), \
+             patch("core.roxy_registration._has_access_token", return_value=False), \
+             patch("core.roxy_registration._human_click"), \
+             patch("core.roxy_registration._human_type_text") as type_text:
+            password = _fill_password_page_if_present(driver, "user@example.com", timeout=3)
+        self.assertEqual(password, "Aa1!Bb2@Cc3#")
+        type_text.assert_called()
+
+    def test_wait_next_state_prefers_password_over_otp_when_password_input_exists(self):
+        with patch("core.roxy_registration._has_access_token", return_value=False), \
+             patch("core.roxy_registration.time.sleep"):
+            state = _wait_email_submit_next_state(self._Driver(), "user@example.com", timeout=1)
+        self.assertEqual(state, "password")
 
 
 class ContinueWithPasswordMatcherTests(unittest.TestCase):
