@@ -2486,6 +2486,9 @@ def run_roxy_registration(
             },
         )
         codex_ok = codex_result.get("ok") or codex_result.get("status") == "skipped"
+        if not codex_ok:
+            from core.failure_screenshot import capture_registration_failure
+            capture_registration_failure(driver, reason="Roxy Codex 未完成")
         return {
             "success": bool(codex_ok),
             "email": email,
@@ -2497,6 +2500,8 @@ def run_roxy_registration(
             "error": None if codex_ok else f"Codex 未完成: {codex_result.get('message')}",
         }
     except Exception as exc:
+        from core.failure_screenshot import capture_registration_failure
+        capture_registration_failure(driver, reason="Roxy注册失败")
         if traffic_tracker is not None:
             try:
                 network_traffic = traffic_tracker.stop()

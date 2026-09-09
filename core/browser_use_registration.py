@@ -15,6 +15,7 @@ import random
 import threading
 import string
 import time
+from contextlib import ExitStack
 from datetime import date
 from pathlib import Path
 from typing import Any, Callable
@@ -2594,7 +2595,17 @@ def run_browser_use_registration(
     )
 
     try:
-        with sync_playwright() as p:
+        with ExitStack() as stack:
+            p = stack.enter_context(sync_playwright())
+
+            def _capture_on_error(exc_type, exc, tb):
+                if exc_type is None:
+                    return False
+                from core.failure_screenshot import capture_registration_failure
+                capture_registration_failure(page, reason=f"{cloud_label}注册失败")
+                return False
+
+            stack.push(_capture_on_error)
             logger.info("[%s] 连接 CDP ...", cloud_label)
             _t_cdp = _StepTimer(f"连接 {cloud_label} CDP")
             connect_kwargs = {}

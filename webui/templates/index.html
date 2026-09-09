@@ -210,6 +210,12 @@
     #logPanel h3, #retryLogPanel h3, #liveLogPanel h3, #totpLogPanel h3, #emailChangeLogPanel h3, #qrPanel h3 { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
     #logPanel h3 .btn, #retryLogPanel h3 .btn, #liveLogPanel h3 .btn, #totpLogPanel h3 .btn, #emailChangeLogPanel h3 .btn, #qrPanel h3 .btn { margin-left:auto; float:none !important; }
     #logPanel .log, #retryLogPanel .log, #liveLogPanel .log, #totpLogPanel .log, #emailChangeLogPanel .log { max-height: calc(min(760px, calc(100vh - 48px)) - 74px); margin-top:0; }
+    #logScreenshotWrap { margin: 0 0 10px; }
+    #logScreenshotWrap.hidden { display: none !important; }
+    #logScreenshot {
+      display: block; width: 100%; max-height: 280px; object-fit: contain;
+      border: 1px solid var(--line); border-radius: 8px; background: #0c1322; cursor: zoom-in;
+    }
     #qrPanel img { display:block; max-width:min(360px, calc(100vw - 96px)); max-height:420px; margin:12px auto; border:1px solid var(--line); border-radius:10px; background:#fff; }
     #qrPanel .qr-link { display:block; word-break:break-all; white-space:normal; font-size:12px; color:var(--muted); margin-top:8px; }
     .hidden { display: none !important; }
@@ -2841,6 +2847,11 @@
 </div>
 <div class="body hidden" id="logPanel">
   <h3>任务 #<span id="logJobId"></span> 日志 <button class="btn" id="btnCloseLog" style="float:right;min-height:28px;">关闭</button></h3>
+  <div id="logScreenshotWrap" class="hidden">
+    <a id="logScreenshotLink" href="#" target="_blank" rel="noopener noreferrer" title="打开原图">
+      <img id="logScreenshot" alt="失败时的界面截图">
+    </a>
+  </div>
   <div class="log" id="logContent">加载中…</div>
 </div>
 <div id="qrPanel" class="body hidden">
@@ -3053,6 +3064,7 @@ function formatTraffic(t) {
 function jobsV2OpIcons() {
   return {
     view: `<svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`,
+    shot: `<svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
     retry: `<svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>`,
     stop: `<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>`,
     check: `<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>`,
@@ -3179,6 +3191,11 @@ function bindJobsBodyEvents(bodyEl) {
     const logBtn = e.target.closest('[data-log-job]');
     if (logBtn) {
       openLog(parseInt(logBtn.dataset.logJob, 10));
+      return;
+    }
+    const shotBtn = e.target.closest('[data-shot-job]');
+    if (shotBtn) {
+      openLog(parseInt(shotBtn.dataset.shotJob, 10));
       return;
     }
     const stopBtn = e.target.closest('[data-stop-job]');
@@ -3334,6 +3351,7 @@ function renderJobs() {
         <td class="col-actions">
           <div class="jobs-v2-ops">
             <button type="button" class="jobs-v2-op jobs-v2-op--view" data-log-job="${esc(j.id)}" title="查看日志">${icons.view}</button>
+            ${j.has_screenshot ? `<button type="button" class="jobs-v2-op jobs-v2-op--view" data-shot-job="${esc(j.id)}" title="查看失败截图">${icons.shot}</button>` : ''}
             ${manualOtp ? `<input class="manual-otp-input manual-otp-input--v2" data-otp-email="${esc(j.email)}" data-otp-job="${esc(j.id)}" placeholder="邮箱验证码" maxlength="8" title="手动模式下，打开邮箱后把 6 位验证码贴这里"><button type="button" class="jobs-v2-op jobs-v2-op--otp" data-submit-otp-job="${esc(j.id)}" data-email="${esc(j.email)}" title="提交验证码">${icons.check}</button>` : ''}
             ${stoppable ? `<button type="button" class="jobs-v2-op jobs-v2-op--stop" data-stop-job="${esc(j.id)}" title="${j.status === 'stopping' ? '停止/修复' : '停止'}">${icons.stop}</button>` : ''}
             ${j.retryable ? `<button type="button" class="jobs-v2-op jobs-v2-op--retry" data-retry-job="${esc(j.id)}" title="${esc(j.retry_action === 'codex' ? '账号已创建，仅补跑 Codex 授权' : (j.retry_label || '重试'))}">${icons.retry}</button>` : ''}
@@ -3763,6 +3781,18 @@ async function pollLog() {
     const c = $('#logContent');
     const atBottom = c.scrollTop + c.clientHeight >= c.scrollHeight - 30;
     c.textContent = r.log || '(暂无日志)';
+    const wrap = $('#logScreenshotWrap');
+    const img = $('#logScreenshot');
+    const link = $('#logScreenshotLink');
+    const shotUrl = `/api/jobs/${activeLogJob}/screenshot`;
+    if (wrap && img && (r.job?.screenshot_path || r.job?.has_screenshot)) {
+      wrap.classList.remove('hidden');
+      img.src = shotUrl;
+      if (link) link.href = shotUrl;
+    } else if (wrap) {
+      wrap.classList.add('hidden');
+      if (img) img.removeAttribute('src');
+    }
     if (atBottom) c.scrollTop = c.scrollHeight;
     if (r.job && ['success','failed','stopped','cancelled'].includes(r.job.status)) clearInterval(logTimer);
   } catch(e) {}

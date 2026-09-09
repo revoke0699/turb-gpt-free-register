@@ -514,6 +514,11 @@
       <div class="pager-bar" id="pager-jobs"></div>
       <div class="body hidden" id="logPanel">
         <h3>任务 #<span id="logJobId"></span> 日志 <button class="btn" id="btnCloseLog" style="float:right;min-height:28px;">关闭</button></h3>
+        <div id="logScreenshotWrap" class="hidden">
+          <a id="logScreenshotLink" href="#" target="_blank" rel="noopener noreferrer" title="打开原图">
+            <img id="logScreenshot" alt="失败时的界面截图" style="display:block;width:100%;max-height:280px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#0c1322;">
+          </a>
+        </div>
         <div class="log" id="logContent">加载中…</div>
       </div>
     </section>
@@ -1272,6 +1277,18 @@ async function pollLog() {
     const c = $('#logContent');
     const atBottom = c.scrollTop + c.clientHeight >= c.scrollHeight - 30;
     c.textContent = r.log || '(暂无日志)';
+    const wrap = $('#logScreenshotWrap');
+    const img = $('#logScreenshot');
+    const link = $('#logScreenshotLink');
+    const shotUrl = `/api/jobs/${activeLogJob}/screenshot`;
+    if (wrap && img && (r.job?.screenshot_path || r.job?.has_screenshot)) {
+      wrap.classList.remove('hidden');
+      img.src = shotUrl;
+      if (link) link.href = shotUrl;
+    } else if (wrap) {
+      wrap.classList.add('hidden');
+      if (img) img.removeAttribute('src');
+    }
     if (atBottom) c.scrollTop = c.scrollHeight;
     if (r.job && ['success','failed','stopped','cancelled'].includes(r.job.status)) clearInterval(logTimer);
   } catch(e) {}

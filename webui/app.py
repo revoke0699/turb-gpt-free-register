@@ -198,7 +198,7 @@ def _compact_job_for_list(row: dict) -> dict:
     for key in (
         "parent_job_id", "retry_attempt", "batch_id", "email", "started_at", "completed_at",
         "display_status", "retryable", "retry_action", "retry_label",
-        "manual_otp_required",
+        "manual_otp_required", "has_screenshot",
     ):
         value = row.get(key)
         if value is not None and value != "" and value is not False:
@@ -2489,6 +2489,7 @@ def create_app(auth_code: str | None = None) -> Flask:
             for row in rows:
                 row["manual_otp_required"] = manual_otp_required
                 row.update(svc.get_retry_info(row))
+                row["has_screenshot"] = bool(str(row.get("screenshot_path") or "").strip())
             result.update({"ok": True, "page": page, "page_size": page_size})
             result["items"] = [_compact_job_for_list(r) for r in rows]
             result["status_counts"] = db.job_status_counts()
@@ -2857,6 +2858,21 @@ def create_app(auth_code: str | None = None) -> Flask:
             "job": job,
             "log": svc.read_job_log(job_id),
         })
+
+    @app.get("/api/jobs/<int:job_id>/screenshot")
+    def api_job_screenshot(job_id: int):
+        job = db.get_job(job_id)
+        if not job:
+            return jsonify({"ok": False, "error": "任务不存在"}), 404
+        from core.failure_screenshot import resolve_job_screenshot_path
+        path = resolve_job_screenshot_path(job)
+        if path is None:
+            return jsonify({"ok": False, "error": "没有失败截图"}), 404
+        response = make_response(path.read_bytes())
+        response.mimetype = "image/png"
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Content-Disposition"] = f'inline; filename="{path.name}"'
+        return response
 
     # ----------------------------------------------------------
     # RoxyBrowser 辅助接口

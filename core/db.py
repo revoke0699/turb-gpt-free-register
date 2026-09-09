@@ -2925,6 +2925,7 @@ def _new_job_row(
         "completed_at": None,
         "account_id": account_id,
         "network_traffic": None,
+        "screenshot_path": None,
         "created_at": _now(),
     }
 
@@ -3002,6 +3003,7 @@ def update_job(
     completed_at: str | None = None,
     account_id: int | None = None,
     network_traffic: dict | None = None,
+    screenshot_path: str | None = None,
 ) -> None:
     with _LOCK:
         rows = _load_jobs()
@@ -3022,6 +3024,8 @@ def update_job(
             row["account_id"] = account_id
         if network_traffic is not None:
             row["network_traffic"] = dict(network_traffic)
+        if screenshot_path is not None:
+            row["screenshot_path"] = str(screenshot_path)
         _save_jobs(rows)
 
 
@@ -3173,7 +3177,19 @@ def delete_job(job_id: int, *, delete_log: bool = True, allow_running: bool = Fa
                 Path(log_file).unlink(missing_ok=True)
             except Exception:
                 pass
+        for shot in (row.get("screenshot_path"), str(Path(log_file).with_suffix(".png")) if log_file else ""):
+            if not shot:
+                continue
+            try:
+                Path(shot).unlink(missing_ok=True)
+            except Exception:
+                pass
     return True
+
+
+def log_dir() -> Path:
+    _ensure_storage()
+    return _LOG_DIR
 
 
 # ============================================================

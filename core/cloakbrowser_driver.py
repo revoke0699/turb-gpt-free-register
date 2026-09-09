@@ -187,6 +187,13 @@ class CloakSeleniumDriver:
     def refresh(self) -> None:
         self.page.reload(wait_until="domcontentloaded", timeout=self._page_load_timeout_ms)
 
+    def get_screenshot_as_png(self) -> bytes:
+        try:
+            data = self.page.screenshot(type="png")
+        except TypeError:
+            data = self.page.screenshot()
+        return bytes(data or b"")
+
     def quit(self) -> None:
         try:
             if self._cdp_client is not None:
