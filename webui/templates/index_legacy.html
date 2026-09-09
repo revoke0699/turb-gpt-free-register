@@ -953,7 +953,7 @@ $('#jobsSelectAll').addEventListener('change', (e) => {
 $('#btnDeleteSelectedJobs').addEventListener('click', deleteSelectedJobs);
 $('#btnRetrySelectedJobs').addEventListener('click', retrySelectedJobs);
 $('#btnCancelPending').addEventListener('click', async () => {
-  const pendingCount = Number(JOB_STATUS_COUNTS.pending || 0);
+  const pendingCount = Number(JOB_STATUS_COUNTS.pending || 0) + Number(JOB_STATUS_COUNTS.queued || 0);
   const msg = pendingCount > 0
     ? `确定取消 ${pendingCount} 个排队中的任务吗？已运行中的任务不受影响。`
     : '当前页没有排队任务；仍要请求后端取消所有排队任务吗？';

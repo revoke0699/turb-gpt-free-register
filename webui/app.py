@@ -2493,6 +2493,9 @@ def create_app(auth_code: str | None = None) -> Flask:
             result.update({"ok": True, "page": page, "page_size": page_size})
             result["items"] = [_compact_job_for_list(r) for r in rows]
             result["status_counts"] = db.job_status_counts()
+            remaining = int(svc.queued_remaining() or 0)
+            result["status_counts"]["queued"] = remaining
+            result["status_counts"]["active"] = int(result["status_counts"].get("active") or 0) + remaining
             result["compact"] = True
             return jsonify(result)
         rows = db.list_jobs(limit=max(1, int(limit or 1)))
@@ -2535,10 +2538,10 @@ def create_app(auth_code: str | None = None) -> Flask:
                     "error": "手动模式建议每次只跑 1 个任务（同一 REGISTER_EMAIL）。请把数量设为 1。",
                 }), 400
             jobs = svc.submit_registration(count=count, workers=workers)
-            batch_id = str((jobs[0] or {}).get("batch_id") or "") if jobs else ""
+            batch_id = str((db.get_current_batch() or {}).get("batch_id") or "")
             return jsonify({
                 "ok": True,
-                "submitted": len(jobs),
+                "submitted": count,
                 "jobs": jobs,
                 "warning": f"手动 OTP 模式：将使用 {reg_email}；验证码请在任务页提交",
                 "workers": workers,
@@ -2663,10 +2666,10 @@ def create_app(auth_code: str | None = None) -> Flask:
             if pool.get("available", 0) < count:
                 warning = f"可用邮箱仅 {pool.get('available', 0)} 个，少于任务数 {count}，不足的会失败"
         jobs = svc.submit_registration(count=count, workers=workers)
-        batch_id = str((jobs[0] or {}).get("batch_id") or "") if jobs else ""
+        batch_id = str((db.get_current_batch() or {}).get("batch_id") or "")
         return jsonify({
             "ok": True,
-            "submitted": len(jobs),
+            "submitted": count,
             "jobs": jobs,
             "warning": warning,
             "workers": workers,

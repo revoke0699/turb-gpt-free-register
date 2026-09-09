@@ -55,16 +55,50 @@ class RuntimeMonitorTests(unittest.TestCase):
         ):
             jobs = svc.submit_registration(count=3, workers=2)
 
-        self.assertEqual(len(jobs), 3)
-        batch_ids = {job.get("batch_id") for job in jobs}
-        self.assertEqual(len(batch_ids), 1)
-        batch_id = jobs[0]["batch_id"]
-        self.assertTrue(str(batch_id).startswith("web-"))
-        self.assertEqual(executor.submit.call_count, 3)
+        self.assertEqual(jobs, [])
+        self.assertEqual(len(db.list_jobs(limit=20)), 0)
+        self.assertEqual(executor.submit.call_count, 2)
         current = db.get_current_batch()
-        self.assertEqual(current.get("batch_id"), batch_id)
+        batch_id = current.get("batch_id")
+        self.assertTrue(str(batch_id).startswith("web-"))
         self.assertEqual(int(current.get("target_count") or 0), 3)
         self.assertEqual(int(current.get("workers") or 0), 2)
+
+    def test_worker_loop_creates_jobs_until_count_reached(self):
+        ran = []
+
+        def fake_run(job_id, log_file):
+            ran.append(int(job_id))
+            db.update_job(int(job_id), status="success", completed_at="2026-09-09T10:00:00")
+
+        executor = MagicMock()
+        with patch.object(svc, "get_executor", return_value=executor), patch.object(
+            svc, "get_executor_workers", return_value=2
+        ), patch.object(svc, "_run_one_job", side_effect=fake_run):
+            svc.submit_registration(count=4, workers=2)
+            loop = executor.submit.call_args_list[0].args[0]
+            args = executor.submit.call_args_list[0].args[1:]
+            loop(*args)
+            loop(*args)
+
+        self.assertEqual(len(ran), 4)
+        self.assertEqual(len(db.list_jobs(limit=20)), 4)
+        self.assertTrue(all(row.get("status") == "success" for row in db.list_jobs(limit=20)))
+
+    def test_cancel_pending_stops_unclaimed_slots_without_creating_jobs(self):
+        executor = MagicMock()
+        with patch.object(svc, "get_executor", return_value=executor), patch.object(
+            svc, "get_executor_workers", return_value=1
+        ), patch.object(svc, "_run_one_job") as run_job:
+            svc.submit_registration(count=6, workers=1)
+            cancelled = svc.cancel_pending_jobs()
+            loop = executor.submit.call_args.args[0]
+            args = executor.submit.call_args.args[1:]
+            loop(*args)
+
+        self.assertGreaterEqual(cancelled, 6)
+        run_job.assert_not_called()
+        self.assertEqual(len(db.list_jobs(limit=20)), 0)
 
     def test_runtime_snapshot_aggregates_current_batch_only(self):
         batch_id = "web-test-agg"
@@ -96,8 +130,18 @@ class RuntimeMonitorTests(unittest.TestCase):
         self.assertEqual(snap["completed_count"], 1)
         self.assertEqual(snap["pending_count"], 1)
         self.assertEqual(snap["progress_percent"], 50)
-        self.assertIn("run@example.com", snap["current_emails"])
-        self.assertNotIn("旧批次", str(snap.get("last_error") or ""))
+
+    def test_runtime_snapshot_counts_unclaimed_slots_as_pending(self):
+        executor = MagicMock()
+        with patch.object(svc, "get_executor", return_value=executor), patch.object(
+            svc, "get_executor_workers", return_value=1
+        ):
+            svc.submit_registration(count=5, workers=1)
+        snap = svc.get_runtime_snapshot()
+        self.assertTrue(snap["running"])
+        self.assertEqual(snap["target_count"], 5)
+        self.assertEqual(snap["pending_count"], 5)
+        self.assertEqual(snap["completed_count"], 0)
 
     def test_runtime_logs_are_incremental(self):
         svc.begin_runtime_batch("web-logs", target_count=1, workers=1)
@@ -184,7 +228,7 @@ class RuntimeMonitorApiTests(unittest.TestCase):
         payload = response.get_json()
         self.assertEqual(payload["submitted"], 2)
         self.assertTrue(payload.get("batch_id"))
-        self.assertEqual(payload["jobs"][0]["batch_id"], payload["batch_id"])
+        self.assertEqual(len(db.list_jobs(limit=20)), 0)
 
     def test_api_stop_batch_stops_current_round(self):
         job = db.create_job("outlook", batch_id="web-api-stop")

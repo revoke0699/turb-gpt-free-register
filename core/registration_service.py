@@ -2,12 +2,12 @@
 """
 注册任务服务层：
     - 线程池并发执行 run_registration
-    - 每个任务在 data/registration_jobs.json 里有一条记录
-    - 每个任务的日志写到 data/logs/<job_uuid>.log，便于 Web UI 实时尾巴
+    - 提交时只记录次数，worker 真正开跑时才创建任务 ID / 日志
+    - 任务日志写到 注册日志/<job_uuid>.log，便于 Web UI 实时尾巴
 
 使用：
     submit_registration(email_source="outlook", count=5)
-    → 创建 5 个任务，丢入线程池，立即返回 [job_dict, ...]
+    → 启动 worker 循环 5 次，每次开始时才落库一条任务
 """
 import collections
 import logging
@@ -42,6 +42,8 @@ _RUNTIME_LOG_LOCK = threading.Lock()
 _RUNTIME_LOGS: collections.deque[dict[str, Any]] = collections.deque(maxlen=_RUNTIME_LOG_MAX)
 _RUNTIME_LOG_SEQ = 0
 _RUNTIME_BATCH_ID = ""
+_BATCH_QUEUE_LOCK = threading.Lock()
+_BATCH_QUEUES: dict[str, dict[str, Any]] = {}
 
 
 class StopRequested(RuntimeError):
@@ -59,6 +61,8 @@ def reset_runtime_state() -> None:
         _RUNTIME_LOGS.clear()
         _RUNTIME_LOG_SEQ = 0
         _RUNTIME_BATCH_ID = ""
+    with _BATCH_QUEUE_LOCK:
+        _BATCH_QUEUES.clear()
 
 
 def begin_runtime_batch(
@@ -172,7 +176,8 @@ def get_runtime_snapshot(after_id: int = 0) -> dict[str, Any]:
     failure_count = sum(1 for job in jobs if job.get("status") == "failed")
     terminal = {"success", "failed", "stopped", "cancelled"}
     completed_count = sum(1 for job in jobs if job.get("status") in terminal)
-    pending_count = sum(1 for job in jobs if job.get("status") in ("pending", "running", "stopping"))
+    active_count = sum(1 for job in jobs if job.get("status") in ("pending", "running", "stopping"))
+    pending_count = active_count + _batch_remaining(batch_id)
     running = pending_count > 0
     target_count = max(int(meta.get("target_count") or 0), len(jobs))
     workers = max(1, int(meta.get("workers") or get_executor_workers() or 1))
@@ -239,6 +244,7 @@ def request_stop_batch(batch_id: str | None = None) -> dict:
     bid = str(batch_id or "").strip() or str((db.get_current_batch() or {}).get("batch_id") or "").strip()
     if not bid:
         return {"ok": True, "batch_id": "", "stopped_count": 0, "results": []}
+    skipped = _cancel_batch_remaining(bid)
     results = []
     for job in db.list_jobs_by_batch(bid):
         status = str(job.get("status") or "")
@@ -248,9 +254,70 @@ def request_stop_batch(batch_id: str | None = None) -> dict:
     return {
         "ok": True,
         "batch_id": bid,
-        "stopped_count": len(results),
+        "stopped_count": len(results) + skipped,
         "results": results,
     }
+
+
+def _init_batch_queue(batch_id: str, remaining: int) -> None:
+    bid = str(batch_id or "").strip()
+    if not bid:
+        return
+    with _BATCH_QUEUE_LOCK:
+        _BATCH_QUEUES[bid] = {
+            "remaining": max(0, int(remaining or 0)),
+            "cancelled": False,
+        }
+
+
+def _batch_remaining(batch_id: str | None = None) -> int:
+    bid = str(batch_id or "").strip()
+    if not bid:
+        bid = str((db.get_current_batch() or {}).get("batch_id") or _RUNTIME_BATCH_ID or "").strip()
+    if not bid:
+        return 0
+    with _BATCH_QUEUE_LOCK:
+        return max(0, int((_BATCH_QUEUES.get(bid) or {}).get("remaining") or 0))
+
+
+def queued_remaining(batch_id: str | None = None) -> int:
+    return _batch_remaining(batch_id)
+
+
+def _claim_batch_slot(batch_id: str) -> bool:
+    bid = str(batch_id or "").strip()
+    if not bid:
+        return False
+    with _BATCH_QUEUE_LOCK:
+        queue = _BATCH_QUEUES.get(bid)
+        if not queue or queue.get("cancelled") or int(queue.get("remaining") or 0) <= 0:
+            return False
+        queue["remaining"] = int(queue["remaining"]) - 1
+        return True
+
+
+def _cancel_batch_remaining(batch_id: str | None = None) -> int:
+    bid = str(batch_id or "").strip()
+    cancelled = 0
+    with _BATCH_QUEUE_LOCK:
+        if bid:
+            targets = [bid] if bid in _BATCH_QUEUES else []
+        else:
+            targets = list(_BATCH_QUEUES.keys())
+        for key in targets:
+            queue = _BATCH_QUEUES.get(key) or {}
+            cancelled += max(0, int(queue.get("remaining") or 0))
+            queue["remaining"] = 0
+            queue["cancelled"] = True
+            _BATCH_QUEUES[key] = queue
+    return cancelled
+
+
+def _run_batch_loop(batch_id: str, email_source: str) -> None:
+    """每个 worker 循环领取次数，真正开始时才创建任务记录。"""
+    while _claim_batch_slot(batch_id):
+        job = db.create_job(email_source=email_source, batch_id=batch_id)
+        _run_one_job(int(job["id"]), job["log_file"])
 
 
 def _activate_job(job_id: int) -> None:
@@ -684,42 +751,29 @@ def _run_codex_retry_job(job_id: int, log_file: str, email: str, account_id: int
 # ============================================================
 
 def submit_registration(count: int = 1, email_source: str | None = None, workers: int | None = None) -> list[dict]:
-    """
-    创建 N 个注册任务并提交到线程池。
-    email_source 仅记录到 DB；实际邮箱来源固定为 Outlook 账号池。
-
-    Returns:
-        N 个新创建的 job dict
-    """
+    """提交一批注册：只记录次数，任务记录由 worker 在真正开跑时创建。"""
     if email_source is None:
         from config import email as _email_cfg
         email_source = _email_cfg.EMAIL_SOURCE
 
-    # 创建/切换线程池和提交本批任务必须整体串行化：否则另一请求在本批提交中途
+    # 创建/切换线程池和提交本批循环必须整体串行化：否则另一请求在本批提交中途
     # 切换 workers 并 shutdown 旧池，会导致后续 submit 报 cannot schedule new futures after shutdown。
     with _executor_lock:
         executor = get_executor(max_workers=workers)
         effective_workers = get_executor_workers()
         batch_id = new_batch_id()
         begin_runtime_batch(batch_id, target_count=count, workers=effective_workers)
-        jobs = []
-        for _ in range(count):
-            job = db.create_job(email_source=email_source, batch_id=batch_id)
+        _init_batch_queue(batch_id, count)
+        loops = max(1, min(int(effective_workers), int(count)))
+        for _ in range(loops):
             try:
-                executor.submit(_run_one_job, job["id"], job["log_file"])
-            except Exception as exc:
-                db.update_job(
-                    int(job["id"]),
-                    status="failed",
-                    error=f"队列提交失败：{type(exc).__name__}: {exc}"[:500],
-                    completed_at=datetime.now().isoformat(timespec="seconds"),
-                )
-                logger.exception("[Service] 注册任务 #%s 提交线程池失败", job["id"])
-            jobs.append(db.get_job(int(job["id"])) or job)
+                executor.submit(_run_batch_loop, batch_id, email_source)
+            except Exception:
+                logger.exception("[Service] 提交注册循环失败 batch=%s", batch_id)
     logger.info(
-        f"[Service] 已提交 {count} 个注册任务，源={email_source}，workers={effective_workers}，batch={batch_id}"
+        f"[Service] 已提交 {count} 次注册循环，源={email_source}，workers={effective_workers}，batch={batch_id}"
     )
-    return jobs
+    return []
 
 
 def _account_for_job(job: dict) -> dict | None:
@@ -873,15 +927,9 @@ def retry_job(job_id: int, workers: int | None = None, batch_id: str | None = No
 
 
 def cancel_pending_jobs() -> int:
-    """
-    把所有 status=pending 的任务批量改成 cancelled，避免它们被执行。
-    已经在 running 的任务不动（线程池中无法中途打断）。
-    返回成功取消的数量。
-
-    实际"不执行"的保证在 _run_one_job 开头——它真要跑起来时会先看 status 决定是否跳过。
-    """
+    """取消尚未领取的次数，以及库里残留的 pending 任务。运行中的不动。"""
+    cancelled = _cancel_batch_remaining()
     jobs = db.list_jobs(limit=1000)
-    cancelled = 0
     now_iso = datetime.now().isoformat(timespec="seconds")
     for job in jobs:
         if job.get("status") == "pending":
