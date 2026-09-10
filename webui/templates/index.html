@@ -213,13 +213,53 @@
     #logScreenshotWrap { margin: 0 0 10px; }
     #logScreenshotWrap.hidden { display: none !important; }
     .fail-shot-btn {
-      display: inline-flex; align-items: center; min-height: 28px; margin: 6px 0 0;
-      padding: 0 10px; border: 1px solid var(--line); border-radius: 6px;
-      background: #fff; color: #377DFF; font-size: 12px; font-weight: 600; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 4px; height: 24px; line-height: 1;
+      padding: 0 9px; border: 1px solid #fed7aa; border-radius: 999px;
+      background: #fff7ed; color: #c2410c; font-size: 11px; font-weight: 700; cursor: pointer;
+      vertical-align: middle; transition: all .15s ease; box-shadow: 0 1px 2px rgba(194, 65, 12, 0.06);
     }
-    .fail-shot-btn:hover { background: #f0f5ff; }
-    #shotPanel:not(.hidden) { width: min(1100px, calc(100vw - 48px)); text-align: center; overflow: auto; }
-    #shotPanel img { display:block; width:100%; max-height: calc(min(760px, calc(100vh - 48px)) - 74px); object-fit: contain; margin: 0 auto; border-radius: 8px; background:#0c1322; }
+    .fail-shot-btn:hover {
+      background: #ffedd5; border-color: #fdba74; color: #9a3412; transform: translateY(-1px);
+    }
+    .fail-shot-btn svg { width: 12px; height: 12px; stroke: currentColor; fill: none; flex-shrink: 0; }
+    #shotPanel:not(.hidden) {
+      width: min(1180px, calc(100vw - 40px));
+      max-height: min(860px, calc(100vh - 40px));
+      display: flex; flex-direction: column; padding: 0;
+      background: #090d16; border: 1px solid #1e293b; border-radius: 14px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 0 9999px rgba(3, 7, 18, 0.65);
+      backdrop-filter: blur(8px);
+      overflow: hidden;
+    }
+    .shot-lightbox-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 18px; border-bottom: 1px solid #1e293b; background: rgba(15, 23, 42, 0.95);
+      color: #f1f5f9; flex-shrink: 0;
+    }
+    .shot-lightbox-title { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 700; }
+    .shot-lightbox-title svg { width: 16px; height: 16px; color: #f97316; }
+    .shot-lightbox-badge {
+      display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px;
+      font-size: 11px; font-weight: 600; background: rgba(249, 115, 22, 0.15); color: #fb923c;
+      border: 1px solid rgba(249, 115, 22, 0.3);
+    }
+    .shot-lightbox-actions { display: flex; align-items: center; gap: 8px; }
+    .shot-lightbox-actions .btn {
+      min-height: 28px; padding: 0 10px; font-size: 12px; border-radius: 6px;
+      border: 1px solid #334155; background: #1e293b; color: #e2e8f0; text-decoration: none;
+      display: inline-flex; align-items: center; gap: 4px; font-weight: 600; cursor: pointer;
+    }
+    .shot-lightbox-actions .btn:hover { background: #334155; color: #fff; border-color: #475569; }
+    .shot-lightbox-canvas {
+      flex: 1; min-height: 200px; display: flex; align-items: center; justify-content: center;
+      padding: 16px; background: radial-gradient(circle at center, #0f172a 0%, #030712 100%);
+      overflow: auto;
+    }
+    #shotPanel img {
+      display: block; max-width: 100%; max-height: calc(min(860px, calc(100vh - 40px)) - 80px);
+      object-fit: contain; margin: 0 auto; border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); border: 1px solid #1e293b;
+    }
     #qrPanel img { display:block; max-width:min(360px, calc(100vw - 96px)); max-height:420px; margin:12px auto; border:1px solid var(--line); border-radius:10px; background:#fff; }
     #qrPanel .qr-link { display:block; word-break:break-all; white-space:normal; font-size:12px; color:var(--muted); margin-top:8px; }
     .hidden { display: none !important; }
@@ -335,94 +375,250 @@
     }
     .sidebar-logout button:hover { color: #b3261e; background: #fff0ef; }
 
+    /* ---- 新版启动任务区 (tab-register) ---- */
     .register-start-grid {
-      display: grid; gap: 16px;
-      grid-template-columns: minmax(0, 1fr) 280px;
+      display: grid; gap: 20px;
+      grid-template-columns: minmax(0, 1.4fr) minmax(320px, 1fr);
+      align-items: start;
     }
-    .register-start-fields { display: grid; gap: 16px; }
-    .register-start-fields .row { margin: 0; }
+    .register-start-fields {
+      display: flex; flex-direction: column; gap: 16px;
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px;
+    }
+    .register-field-group { display: flex; flex-direction: column; gap: 8px; }
+    .register-field-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+    .register-field-title { font-size: 13px; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 6px; }
+    .register-field-hint { font-size: 12px; color: #64748b; font-weight: 400; }
+    .quick-preset-tags { display: inline-flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+    .quick-tag {
+      min-height: 26px; border: 1px solid #e2e8f0; border-radius: 6px;
+      background: #f8fafc; color: #475569; font-size: 12px; font-weight: 600;
+      padding: 0 10px; cursor: pointer; transition: all .15s ease;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .quick-tag:hover { background: #eff6ff; border-color: #bfdbfe; color: #2563eb; }
+    .quick-tag.active { background: #2563eb; border-color: #2563eb; color: #fff; }
+    .register-actions-bar {
+      display: flex; gap: 12px; align-items: center; padding-top: 14px; border-top: 1px solid #f1f5f9;
+      flex-wrap: wrap;
+    }
+    .register-btn-start {
+      min-height: 42px; padding: 0 24px; font-size: 14px; font-weight: 700;
+      background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+      border: 1px solid #1d4ed8; color: #fff; border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2); cursor: pointer;
+      display: inline-flex; align-items: center; gap: 8px; transition: all .15s ease;
+    }
+    .register-btn-start:hover {
+      background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+      box-shadow: 0 4px 8px rgba(37, 99, 235, 0.3); transform: translateY(-1px);
+    }
+    .register-btn-start svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; }
+    .register-btn-monitor {
+      min-height: 42px; padding: 0 18px; font-size: 13px; font-weight: 600;
+      background: #fff; border: 1px solid #cbd5e1; color: #334155; border-radius: 8px;
+      cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all .15s ease;
+    }
+    .register-btn-monitor:hover { background: #f8fafc; color: #0f172a; border-color: #94a3b8; }
+    .register-btn-monitor svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+
+    /* 任务概览/就绪状态卡片 */
     .register-start-preview {
-      border: 1px solid #ebeef5; border-radius: 12px; background: #f8fafc;
-      padding: 16px;
+      border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc;
+      padding: 20px; display: flex; flex-direction: column; gap: 16px;
+      position: relative; overflow: hidden;
     }
-    .register-start-preview .muted { font-size: 12px; }
-    .register-start-preview strong { display: block; margin: 6px 0 8px; font-size: 20px; }
+    .register-start-preview::before {
+      content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: #3b82f6;
+    }
+    .preview-header-row { display: flex; align-items: center; justify-content: space-between; }
+    .preview-badge-status {
+      display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px;
+      font-size: 11px; font-weight: 700; background: #e0f2fe; color: #0369a1;
+    }
+    .preview-title-box strong { display: block; font-size: 18px; color: #0f172a; margin-bottom: 2px; }
     .register-start-preview-nums {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
     }
     .register-start-preview-nums div {
-      background: #fff; border-radius: 10px; padding: 10px 8px; text-align: center;
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+      padding: 12px 14px; text-align: left;
     }
-    .register-start-preview-nums b { display: block; font-size: 18px; }
-    .register-start-preview-nums span { color: #909399; font-size: 12px; }
+    .register-start-preview-nums b { display: block; font-size: 22px; color: #0f172a; font-variant-numeric: tabular-nums; }
+    .register-start-preview-nums span { color: #64748b; font-size: 12px; font-weight: 500; }
+    .preview-tips-list {
+      display: flex; flex-direction: column; gap: 8px; font-size: 12px; color: #64748b;
+      padding-top: 14px; border-top: 1px dashed #cbd5e1;
+    }
+    .preview-tip-item { display: flex; align-items: center; gap: 6px; }
+    .preview-tip-item svg { width: 14px; height: 14px; color: #3b82f6; flex-shrink: 0; }
+
+    /* ---- 运行监控大屏 (tab-runtime) ---- */
     .runtime-head {
       display: flex; align-items: flex-start; justify-content: space-between;
-      gap: 12px; flex-wrap: wrap; margin-bottom: 4px;
+      gap: 16px; flex-wrap: wrap; margin-bottom: 4px;
     }
-    .runtime-head-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .runtime-title-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .runtime-batch-pill {
+      display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 6px;
+      font-family: ui-monospace, Consolas, monospace; font-size: 12px; font-weight: 600;
+      background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0;
+    }
+    .runtime-head-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+    /* 监控指标面板 */
     .runtime-metrics {
-      display: grid; grid-template-columns: repeat(8, minmax(0, 1fr));
-      border: 1px solid var(--line); border-radius: 10px; background: #fff; overflow: hidden;
+      display: grid; gap: 12px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
     }
-    .runtime-metric { padding: 14px 16px; border-right: 1px solid #edf1f5; min-width: 0; }
-    .runtime-metric:last-child { border-right: none; }
-    .runtime-metric span { display: block; color: #909399; font-size: 12px; }
-    .runtime-metric b { display: block; margin-top: 8px; font-size: 22px; font-variant-numeric: tabular-nums; }
-    .runtime-metric b.is-good { color: var(--green); }
-    .runtime-metric b.is-bad { color: var(--red); }
+    .runtime-metric {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+      padding: 16px; display: flex; flex-direction: column; justify-content: space-between;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03); transition: transform .15s ease, box-shadow .15s ease;
+      min-width: 0;
+    }
+    .runtime-metric:hover { transform: translateY(-1px); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.06); }
+    .runtime-metric span { display: block; color: #64748b; font-size: 12px; font-weight: 600; }
+    .runtime-metric b {
+      display: block; margin-top: 8px; font-size: 26px; font-weight: 800;
+      color: #0f172a; font-variant-numeric: tabular-nums; line-height: 1;
+    }
+    .runtime-metric.is-target { border-left: 4px solid #3b82f6; }
+    .runtime-metric.is-completed { border-left: 4px solid #6366f1; }
+    .runtime-metric.is-success { border-left: 4px solid #10b981; }
+    .runtime-metric b.is-good { color: #059669; }
+    .runtime-metric.is-failed { border-left: 4px solid #ef4444; }
+    .runtime-metric b.is-bad { color: #dc2626; }
+
+    .runtime-submetrics-bar {
+      grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+      background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 18px;
+      gap: 16px;
+    }
+    .runtime-submetric-item { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .runtime-submetric-item span { font-size: 12px; color: #64748b; font-weight: 500; }
+    .runtime-submetric-item b { font-size: 15px; color: #0f172a; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+    /* 注册进度卡片 */
     .runtime-progress-top {
       display: flex; align-items: flex-start; justify-content: space-between;
-      gap: 12px; flex-wrap: wrap;
+      gap: 16px; flex-wrap: wrap;
+    }
+    .runtime-progress-top h2 {
+      font-size: 16px; font-weight: 700; color: #0f172a;
+      display: flex; align-items: center; gap: 8px;
     }
     .runtime-progress-pct { text-align: right; }
-    .runtime-progress-pct b { display: block; font-size: 32px; line-height: 1; font-variant-numeric: tabular-nums; }
-    .runtime-bar { height: 10px; border-radius: 999px; background: #eef2f6; overflow: hidden; }
-    .runtime-bar > i { display: block; height: 100%; width: 0; background: #3b82f6; border-radius: inherit; transition: width .4s ease; }
+    .runtime-progress-pct b {
+      display: block; font-size: 32px; font-weight: 800; line-height: 1;
+      color: #3b82f6; font-variant-numeric: tabular-nums;
+    }
+    .runtime-progress-pct .muted { font-size: 12px; font-weight: 600; color: #94a3b8; margin-top: 4px; }
+    .runtime-bar {
+      height: 14px; border-radius: 999px; background: #e2e8f0;
+      overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,0.06);
+    }
+    .runtime-bar > i {
+      display: block; height: 100%; width: 0;
+      background: linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%);
+      border-radius: inherit; transition: width .4s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 0 10px rgba(59, 130, 246, 0.35);
+    }
     .runtime-meta {
-      display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px;
+      display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 16px;
     }
     .runtime-meta-item {
       border: 1px solid #ebeef5; border-radius: 10px; background: #f8fafc; padding: 12px;
     }
-    .runtime-meta-item span { display: block; color: #909399; font-size: 12px; }
-    .runtime-meta-item b { display: block; margin-top: 6px; font-size: 14px; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .runtime-meta-item span { display: block; color: #64748b; font-size: 11px; font-weight: 500; }
+    .runtime-meta-item b {
+      display: block; margin-top: 6px; font-size: 13px; font-weight: 700; color: #1e293b;
+      font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+
+    /* 本次结果卡片 */
     .runtime-results-toggle {
-      width: 100%; display: flex; align-items: center; gap: 10px;
+      width: 100%; display: flex; align-items: center; gap: 12px;
       border: 0; background: transparent; padding: 0; cursor: pointer; text-align: left;
     }
-    .runtime-log-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
-    .runtime-log-tools input { flex: 1; min-width: 180px; margin-top: 0; }
-    .runtime-log-filters { display: flex; gap: 6px; flex-wrap: wrap; }
-    .runtime-log-filters button {
-      min-height: 30px; border: 0; border-radius: 999px; padding: 0 10px;
-      background: #f2f4f7; color: #475467; font-weight: 700; font-size: 12px; cursor: pointer;
+    .runtime-results-title { font-size: 14px; font-weight: 700; color: #0f172a; }
+    .runtime-chevron-icon {
+      width: 16px; height: 16px; stroke: currentColor; fill: none;
+      transition: transform .2s ease; margin-left: 8px; color: #64748b;
     }
-    .runtime-log-filters button.active { background: #0f172a; color: #fff; }
+    .runtime-results-toggle[aria-expanded="true"] .runtime-chevron-icon { transform: rotate(180deg); }
+
+    /* 实时日志 - Dark Terminal */
+    .runtime-log-card {
+      border: 1px solid #1e293b !important; border-radius: 12px; background: #090d16 !important;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2); overflow: hidden;
+    }
+    .runtime-log-card .head {
+      background: #0f172a !important; border-bottom: 1px solid #1e293b !important;
+      padding: 14px 18px;
+    }
+    .runtime-log-card .head h2 { color: #f8fafc !important; font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .runtime-log-card .head p { color: #94a3b8 !important; }
+    .runtime-terminal-dots { display: inline-flex; gap: 6px; margin-right: 6px; }
+    .runtime-terminal-dot { width: 10px; height: 10px; border-radius: 999px; }
+    .dot-red { background: #ef4444; } .dot-yellow { background: #f59e0b; } .dot-green { background: #10b981; }
+
+    .runtime-log-tools {
+      display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+      padding: 12px 18px; background: #0c1322; border-bottom: 1px solid #1e293b; margin-top: 0;
+    }
+    .runtime-log-tools input {
+      flex: 1; min-width: 180px; margin-top: 0; min-height: 32px; font-size: 12px;
+      background: #090d16; border-color: #334155; color: #f1f5f9; border-radius: 6px;
+    }
+    .runtime-log-tools input:focus { border-color: #38bdf8; outline: none; }
+    .runtime-log-filters {
+      display: flex; gap: 4px; background: #090d16; padding: 3px; border-radius: 8px; border: 1px solid #1e293b;
+    }
+    .runtime-log-filters button {
+      min-height: 26px; border: 0; border-radius: 6px; padding: 0 10px;
+      background: transparent; color: #94a3b8; font-weight: 600; font-size: 12px; cursor: pointer;
+      transition: all .15s ease;
+    }
+    .runtime-log-filters button:hover { color: #f1f5f9; background: rgba(255,255,255,0.05); }
+    .runtime-log-filters button.active { background: #38bdf8; color: #090d16; font-weight: 700; }
+    .runtime-log-tool-btn {
+      min-height: 30px; border: 1px solid #334155; border-radius: 6px;
+      background: #1e293b; color: #cbd5e1; font-size: 12px; font-weight: 600;
+      padding: 0 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
+      transition: all .15s ease;
+    }
+    .runtime-log-tool-btn:hover { background: #334155; color: #fff; border-color: #475569; }
+    .runtime-log-card .inline-num { color: #94a3b8; }
+    .runtime-log-card .inline-num input { accent-color: #38bdf8; }
+
     .runtime-log-box {
-      margin-top: 10px; background: #f8fafc; color: #334155; border: 1px solid #e2e8f0;
-      border-radius: 10px; padding: 12px; min-height: 360px; max-height: 540px; overflow: auto;
-      font-family: ui-monospace, Consolas, monospace; font-size: 12px; line-height: 1.6;
+      margin-top: 0; background: #090d16; color: #cbd5e1; border: none;
+      border-radius: 0; padding: 14px 18px; min-height: 380px; max-height: 560px; overflow: auto;
+      font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace; font-size: 12px; line-height: 1.6;
       white-space: pre-wrap; overflow-wrap: anywhere;
     }
-    .runtime-log-line { border-bottom: 1px solid rgba(15,23,42,.06); padding: 2px 0; }
-    .runtime-log-line .t { color: #0284c7; }
-    .runtime-log-line.is-error { color: #be123c; }
-    .runtime-log-line.is-warn { color: #b45309; }
-    .runtime-log-line.is-success { color: #15803d; }
-    .runtime-log-line.is-info { color: #334155; }
+    .runtime-log-line { border-bottom: none; padding: 1px 0; }
+    .runtime-log-line:hover { background: rgba(255, 255, 255, 0.03); }
+    .runtime-log-line .t { color: #38bdf8; opacity: 0.9; margin-right: 4px; }
+    .runtime-log-line.is-error { color: #f87171; }
+    .runtime-log-line.is-warn { color: #fbbf24; }
+    .runtime-log-line.is-success { color: #34d399; }
+    .runtime-log-line.is-info { color: #cbd5e1; }
+
     .runtime-live { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; }
     .runtime-live i { width: 8px; height: 8px; border-radius: 999px; background: #94a3b8; display: inline-block; }
-    .runtime-live.is-on i { background: #f59e0b; animation: runtimePulse 1.2s ease-in-out infinite; }
+    .runtime-live.is-on i { background: #10b981; animation: runtimePulse 1.2s ease-in-out infinite; }
     @keyframes runtimePulse { 50% { opacity: .35; } }
     @media (max-width: 1100px) {
-      .runtime-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-      .runtime-metric:nth-child(4n) { border-right: none; }
+      .runtime-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .runtime-submetrics-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .runtime-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .register-start-grid { grid-template-columns: 1fr; }
     }
     @media (max-width: 700px) {
-      .runtime-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .runtime-metric { border-bottom: 1px solid #edf1f5; }
+      .runtime-metrics { grid-template-columns: 1fr; }
+      .runtime-submetrics-bar { grid-template-columns: 1fr; }
     }
 
     /* ---- 新版注册区（工具条 + 表，旧区不改） ---- */
@@ -2283,47 +2479,93 @@
       <div class="body">
         <div class="register-start-grid">
           <div class="register-start-fields">
-            <div class="row">
-              <label class="fld">注册数量
-                <span class="hint">一次提交算一轮，最多 200 个。</span>
-                <span class="el-input-number">
-                  <input id="regCountV2" type="number" min="1" max="200" value="1" inputmode="numeric">
-                  <button type="button" class="el-input-number__increase" data-step-for="regCountV2" data-step="1" aria-label="增加">
-                    <svg viewBox="0 0 24 24"><polyline points="6 14 12 8 18 14"/></svg>
-                  </button>
-                  <button type="button" class="el-input-number__decrease" data-step-for="regCountV2" data-step="-1" aria-label="减少">
-                    <svg viewBox="0 0 24 24"><polyline points="6 10 12 16 18 10"/></svg>
-                  </button>
+            <div class="register-field-group">
+              <div class="register-field-header">
+                <span class="register-field-title">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                  注册数量
                 </span>
-              </label>
-              <label class="fld">并发线程数
-                <span class="hint">建议从 1–3 开始。</span>
-                <span class="el-input-number">
-                  <input id="regWorkersV2" type="number" min="1" max="16" value="3" inputmode="numeric">
-                  <button type="button" class="el-input-number__increase" data-step-for="regWorkersV2" data-step="1" aria-label="增加">
-                    <svg viewBox="0 0 24 24"><polyline points="6 14 12 8 18 14"/></svg>
-                  </button>
-                  <button type="button" class="el-input-number__decrease" data-step-for="regWorkersV2" data-step="-1" aria-label="减少">
-                    <svg viewBox="0 0 24 24"><polyline points="6 10 12 16 18 10"/></svg>
-                  </button>
-                </span>
-              </label>
-            </div>
-            <div class="row">
-              <div class="action-cell">
-                <button type="button" class="btn primary" id="btnStartV2">开始注册</button>
-                <button type="button" class="btn" id="btnOpenRuntimeFromRegister">打开运行监控</button>
+                <span class="register-field-hint">一次提交算一轮，最多 200 个</span>
               </div>
+              <div class="quick-preset-tags" data-target="regCountV2">
+                <button type="button" class="quick-tag" data-val="1">1</button>
+                <button type="button" class="quick-tag" data-val="3">3</button>
+                <button type="button" class="quick-tag" data-val="5">5</button>
+                <button type="button" class="quick-tag" data-val="10">10</button>
+                <button type="button" class="quick-tag" data-val="20">20</button>
+                <button type="button" class="quick-tag" data-val="50">50</button>
+              </div>
+              <span class="el-input-number" style="width: 100%;">
+                <input id="regCountV2" type="number" min="1" max="200" value="1" inputmode="numeric">
+                <button type="button" class="el-input-number__increase" data-step-for="regCountV2" data-step="1" aria-label="增加">
+                  <svg viewBox="0 0 24 24"><polyline points="6 14 12 8 18 14"/></svg>
+                </button>
+                <button type="button" class="el-input-number__decrease" data-step-for="regCountV2" data-step="-1" aria-label="减少">
+                  <svg viewBox="0 0 24 24"><polyline points="6 10 12 16 18 10"/></svg>
+                </button>
+              </span>
+            </div>
+
+            <div class="register-field-group">
+              <div class="register-field-header">
+                <span class="register-field-title">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                  并发线程数
+                </span>
+                <span class="register-field-hint">建议从 1–3 开始测试网络环境</span>
+              </div>
+              <div class="quick-preset-tags" data-target="regWorkersV2">
+                <button type="button" class="quick-tag" data-val="1">1</button>
+                <button type="button" class="quick-tag" data-val="3">3 (推荐)</button>
+                <button type="button" class="quick-tag" data-val="5">5</button>
+                <button type="button" class="quick-tag" data-val="8">8</button>
+              </div>
+              <span class="el-input-number" style="width: 100%;">
+                <input id="regWorkersV2" type="number" min="1" max="16" value="3" inputmode="numeric">
+                <button type="button" class="el-input-number__increase" data-step-for="regWorkersV2" data-step="1" aria-label="增加">
+                  <svg viewBox="0 0 24 24"><polyline points="6 14 12 8 18 14"/></svg>
+                </button>
+                <button type="button" class="el-input-number__decrease" data-step-for="regWorkersV2" data-step="-1" aria-label="减少">
+                  <svg viewBox="0 0 24 24"><polyline points="6 10 12 16 18 10"/></svg>
+                </button>
+              </span>
+            </div>
+
+            <div class="register-actions-bar">
+              <button type="button" class="register-btn-start" id="btnStartV2">
+                <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3" fill="currentColor"/></svg>
+                开始注册
+              </button>
+              <button type="button" class="register-btn-monitor" id="btnOpenRuntimeFromRegister">
+                <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+                打开运行监控
+              </button>
             </div>
             <div id="regWarnV2"></div>
           </div>
+
           <div class="register-start-preview">
-            <div class="muted">任务预览</div>
-            <strong id="registerPreviewTitle">等待启动</strong>
-            <p class="muted" id="registerPreviewHint">启动后可在运行监控查看完整进度。</p>
+            <div class="preview-header-row">
+              <span class="muted" style="font-size:12px;font-weight:600;">本轮配置概要</span>
+              <span class="preview-badge-status" id="registerPreviewBadge">准备就绪</span>
+            </div>
+            <div class="preview-title-box">
+              <strong id="registerPreviewTitle">等待启动</strong>
+              <p class="muted" id="registerPreviewHint" style="font-size:12px;line-height:1.4;">启动后可在运行监控查看完整进度与合并日志。</p>
+            </div>
             <div class="register-start-preview-nums">
-              <div><b id="registerPreviewCount">1</b><span>目标账号</span></div>
-              <div><b id="registerPreviewWorkers">3</b><span>并发数</span></div>
+              <div><b id="registerPreviewCount">1</b><span>目标账号 (个)</span></div>
+              <div><b id="registerPreviewWorkers">3</b><span>并发线程 (条)</span></div>
+            </div>
+            <div class="preview-tips-list">
+              <div class="preview-tip-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                <span>邮箱、驱动与代理沿用【配置】页全局设定</span>
+              </div>
+              <div class="preview-tip-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                <span>注册成功账号将自动落库并支持推送至号池</span>
+              </div>
             </div>
           </div>
         </div>
@@ -2335,8 +2577,11 @@
   <div id="tab-runtime" class="hidden">
     <div class="runtime-head">
       <div>
-        <h1 class="register-title">运行监控</h1>
-        <p class="muted" style="margin-top:4px;">查看本轮进度、实时日志和任务明细。次要操作仍在下方任务表。</p>
+        <div class="runtime-title-row">
+          <h1 class="register-title" style="margin-bottom:0;">运行监控</h1>
+          <span class="runtime-batch-pill" id="runtimeBatchBadge">批次 —</span>
+        </div>
+        <p class="muted" style="margin-top:6px;">实时查看本轮指标、执行阶段与合并日志。单项详情可在下方任务表核查。</p>
       </div>
       <div class="runtime-head-actions">
         <span class="pill status-success" id="runtimeBadge">空闲</span>
@@ -2346,14 +2591,24 @@
     </div>
 
     <div class="runtime-metrics" id="runtimeMetrics">
-      <div class="runtime-metric"><span>目标账号</span><b id="rtTarget">0</b></div>
-      <div class="runtime-metric"><span>已完成</span><b id="rtCompleted">0</b></div>
-      <div class="runtime-metric"><span>成功</span><b id="rtSuccess" class="is-good">0</b></div>
-      <div class="runtime-metric"><span>失败</span><b id="rtFailure" class="is-bad">0</b></div>
-      <div class="runtime-metric"><span>待处理</span><b id="rtPending">0</b></div>
-      <div class="runtime-metric"><span>并发数</span><b id="rtWorkers">0</b></div>
-      <div class="runtime-metric"><span>成功率</span><b id="rtRate">—</b></div>
-      <div class="runtime-metric"><span>日志行</span><b id="rtLogCount">0</b></div>
+      <div class="runtime-metric is-target">
+        <span>目标账号</span><b id="rtTarget">0</b>
+      </div>
+      <div class="runtime-metric is-completed">
+        <span>已完成</span><b id="rtCompleted">0</b>
+      </div>
+      <div class="runtime-metric is-success">
+        <span>成功账号</span><b id="rtSuccess" class="is-good">0</b>
+      </div>
+      <div class="runtime-metric is-failed">
+        <span>失败账号</span><b id="rtFailure" class="is-bad">0</b>
+      </div>
+      <div class="runtime-submetrics-bar">
+        <div class="runtime-submetric-item"><span>待处理队列</span><b id="rtPending">0</b></div>
+        <div class="runtime-submetric-item"><span>并发线程数</span><b id="rtWorkers">0</b></div>
+        <div class="runtime-submetric-item"><span>本轮成功率</span><b id="rtRate">—</b></div>
+        <div class="runtime-submetric-item"><span>累计日志行</span><b id="rtLogCount">0</b></div>
+      </div>
     </div>
 
     <section class="card">
@@ -2364,7 +2619,10 @@
             <p id="runtimeStageText">当前没有运行中的注册任务</p>
           </div>
           <div class="runtime-head-actions">
-            <button type="button" class="btn danger" id="btnStopBatch" disabled>停止本轮</button>
+            <button type="button" class="btn danger" id="btnStopBatch" disabled>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+              停止本轮
+            </button>
             <div class="runtime-progress-pct">
               <b id="rtPercent">0%</b>
               <div class="muted" id="rtFraction">0 / 0</div>
@@ -2380,18 +2638,19 @@
           <div class="runtime-meta-item"><span>结束时间</span><b id="rtFinished">—</b></div>
           <div class="runtime-meta-item"><span>当前阶段 / 邮箱</span><b id="rtCurrent">—</b></div>
         </div>
-        <p class="muted" id="runtimeFooterHint" style="margin-top:12px;">当前没有运行中的注册任务</p>
+        <p class="muted" id="runtimeFooterHint" style="margin-top:14px;font-size:12px;">当前没有运行中的注册任务</p>
       </div>
     </section>
 
     <section class="card">
       <div class="head">
         <button type="button" class="runtime-results-toggle" id="btnToggleRuntimeResults" aria-expanded="false">
-          <span>本次结果</span>
+          <span class="runtime-results-title">本次结果</span>
           <span class="pill status-success" id="rtResultSuccess">成功 0</span>
           <span class="pill status-failed" id="rtResultFailure">失败 0</span>
-          <span class="muted" id="rtResultTotal">共 0 条</span>
-          <span class="muted" style="margin-left:auto;" id="rtResultToggleLabel">展开</span>
+          <span class="muted" id="rtResultTotal" style="font-size:12px;">共 0 条</span>
+          <span class="muted" style="margin-left:auto;font-size:12px;" id="rtResultToggleLabel">展开</span>
+          <svg class="runtime-chevron-icon" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
       </div>
       <div class="body hidden" id="runtimeResultsBody">
@@ -2404,27 +2663,34 @@
       </div>
     </section>
 
-    <section class="card">
+    <section class="card runtime-log-card">
       <div class="head">
-        <h2>实时日志</h2>
-        <p>合并本轮所有任务的输出，单任务完整日志仍可在下方表格打开。</p>
+        <h2>
+          <span class="runtime-terminal-dots"><i class="runtime-terminal-dot dot-red"></i><i class="runtime-terminal-dot dot-yellow"></i><i class="runtime-terminal-dot dot-green"></i></span>
+          实时日志
+        </h2>
+        <p>合并本轮所有注册与授权流程的控制台输出，单任务完整历史日志仍可在下方表格打开。</p>
       </div>
-      <div class="body">
-        <div class="runtime-log-tools">
-          <input id="runtimeLogQuery" type="search" placeholder="搜索日志内容或时间…" autocomplete="off">
-          <div class="runtime-log-filters" id="runtimeLogFilters">
-            <button type="button" class="active" data-log-level="all">全部</button>
-            <button type="button" data-log-level="error">错误</button>
-            <button type="button" data-log-level="warn">警告</button>
-            <button type="button" data-log-level="success">成功</button>
-            <button type="button" data-log-level="info">流程</button>
-          </div>
-          <label class="inline-num"><input id="runtimeAutoScroll" type="checkbox" checked> 自动滚动</label>
-          <button type="button" class="btn" id="btnCopyRuntimeLogs">复制</button>
-          <button type="button" class="btn" id="btnClearRuntimeLogs">清空视图</button>
+      <div class="runtime-log-tools">
+        <input id="runtimeLogQuery" type="search" placeholder="🔍 搜索日志内容、邮箱或时间…" autocomplete="off">
+        <div class="runtime-log-filters" id="runtimeLogFilters">
+          <button type="button" class="active" data-log-level="all">全部</button>
+          <button type="button" data-log-level="error">错误</button>
+          <button type="button" data-log-level="warn">警告</button>
+          <button type="button" data-log-level="success">成功</button>
+          <button type="button" data-log-level="info">流程</button>
         </div>
-        <div class="runtime-log-box" id="runtimeLogBox">等待日志…启动任务后会在这里实时输出。</div>
+        <label class="inline-num"><input id="runtimeAutoScroll" type="checkbox" checked> 自动滚动</label>
+        <button type="button" class="runtime-log-tool-btn" id="btnCopyRuntimeLogs">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          复制
+        </button>
+        <button type="button" class="runtime-log-tool-btn" id="btnClearRuntimeLogs">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          清空视图
+        </button>
       </div>
+      <div class="runtime-log-box" id="runtimeLogBox">等待日志…启动任务后会在这里实时输出。</div>
     </section>
 
     <section class="jobs-panel-v2" id="jobsPanelV2" aria-label="注册任务">
@@ -2863,8 +3129,23 @@
   <a id="qrOpenLink" class="qr-link" href="#" target="_blank" rel="noopener noreferrer"></a>
 </div>
 <div id="shotPanel" class="body hidden">
-  <h3>失败截图 <button class="btn" id="btnCloseShot">关闭</button></h3>
-  <img id="shotPanelImage" alt="失败时的界面截图">
+  <div class="shot-lightbox-header">
+    <div class="shot-lightbox-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      <span>失败截图</span>
+      <span class="shot-lightbox-badge" id="shotPanelJobTag">查看现场截图</span>
+    </div>
+    <div class="shot-lightbox-actions">
+      <a class="btn" id="btnShotOpenNew" href="#" target="_blank" rel="noopener noreferrer" title="新标签页打开原图">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        新窗口打开
+      </a>
+      <button class="btn btn-close" id="btnCloseShot">关闭</button>
+    </div>
+  </div>
+  <div class="shot-lightbox-canvas">
+    <img id="shotPanelImage" alt="失败时的界面截图">
+  </div>
 </div>
 
 <script>
@@ -3032,7 +3313,7 @@ function short(v, n=40) { const s = v || ''; return s.length > n ? s.slice(0,n)+
 function jobScreenshotUrl(jobId) { return `/api/jobs/${encodeURIComponent(jobId)}/screenshot`; }
 function failShotBtn(jobId) {
   if (!jobId) return '';
-  return `<button type="button" class="fail-shot-btn" data-shot-job="${esc(jobId)}">查看截图</button>`;
+  return `<button type="button" class="fail-shot-btn" data-shot-job="${esc(jobId)}" title="查看失败现场截图"><svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg><span>查看截图</span></button>`;
 }
 function hideShotPaths(text) {
   return String(text || '').replace(/\[失败截图\][^\n]*/g, '[失败截图] 已保存');
@@ -3337,6 +3618,17 @@ function bindJobsBodyEvents(bodyEl) {
     el.addEventListener('input', updateRegisterPreview);
     el.addEventListener('change', updateRegisterPreview);
   });
+  document.querySelectorAll('.quick-preset-tags .quick-tag').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const targetId = btn.parentElement?.dataset?.target;
+      if (!targetId) return;
+      const targetInput = document.getElementById(targetId);
+      if (!targetInput) return;
+      targetInput.value = btn.dataset.val;
+      targetInput.dispatchEvent(new Event('input', { bubbles: true }));
+      targetInput.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  });
   updateRegisterPreview();
 })();
 
@@ -3426,13 +3718,22 @@ function updateRegisterPreview() {
   const workersEl = $('#registerPreviewWorkers'); if (workersEl) workersEl.textContent = String(workers);
   const title = $('#registerPreviewTitle');
   const hint = $('#registerPreviewHint');
+  const badge = $('#registerPreviewBadge');
   if (RUNTIME_STATE.running) {
     if (title) title.textContent = '注册进行中';
-    if (hint) hint.textContent = '可到运行监控查看完整进度。';
+    if (hint) hint.textContent = '批次任务执行中，可随时到运行监控查看完整进度与实时日志。';
+    if (badge) { badge.textContent = '执行中'; badge.style.background = '#fef3c7'; badge.style.color = '#b45309'; }
   } else {
     if (title) title.textContent = '等待启动';
-    if (hint) hint.textContent = '启动后可在运行监控查看完整进度。';
+    if (hint) hint.textContent = '启动后可在运行监控查看完整进度与合并日志。';
+    if (badge) { badge.textContent = '准备就绪'; badge.style.background = '#e0f2fe'; badge.style.color = '#0369a1'; }
   }
+  document.querySelectorAll('.quick-preset-tags[data-target="regCountV2"] .quick-tag').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.val, 10) === count);
+  });
+  document.querySelectorAll('.quick-preset-tags[data-target="regWorkersV2"] .quick-tag').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.val, 10) === workers);
+  });
 }
 function resetRuntimeLogView() {
   RUNTIME_LOGS = [];
@@ -3494,19 +3795,21 @@ function renderRuntimeResults(jobs) {
   const totalEl = $('#rtResultTotal'); if (totalEl) totalEl.textContent = `共 ${(jobs || []).length} 条`;
   if (!visible.length) {
     list.className = 'muted';
+    list.style.padding = '12px 0';
     list.textContent = RUNTIME_STATE.running ? '尚无落库结果，完成单个账号后会出现在这里。' : '暂无结果。可先去新建任务。';
     return;
   }
   list.className = '';
-  list.innerHTML = visible.slice(0, 20).map((j) => {
+  list.style.padding = '0';
+  list.innerHTML = visible.slice(0, 30).map((j) => {
     const ok = j.status === 'success';
-    return `<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #edf1f5;">
+    return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:6px;background:${ok ? '#f0fdf4' : '#fef2f2'};border:1px solid ${ok ? '#bbf7d0' : '#fecaca'};border-radius:8px;">
       ${pillV2(j.display_status || j.status)}
       <div style="min-width:0;flex:1;">
-        <div style="font-weight:700;">${esc(j.email || ('#' + j.id))}</div>
-        <div class="muted" style="font-size:12px;">${esc(j.error_message || formatDateTime(j.completed_at || j.started_at))}</div>
-        ${j.has_screenshot ? failShotBtn(j.id) : ''}
+        <div style="font-weight:700;font-size:13px;color:#1e293b;">${esc(j.email || ('#' + j.id))}</div>
+        <div class="muted" style="font-size:12px;margin-top:2px;">${esc(j.error_message || formatDateTime(j.completed_at || j.started_at))}</div>
       </div>
+      ${j.has_screenshot ? failShotBtn(j.id) : ''}
     </div>`;
   }).join('');
 }
@@ -3515,6 +3818,8 @@ function applyRuntimeSnapshot(snap, appendLogs) {
   RUNTIME_STATE.batch_id = snap.batch_id || '';
   RUNTIME_STATE.started_at = snap.started_at || null;
   RUNTIME_STATE.finished_at = snap.finished_at || null;
+  const batchBadge = $('#runtimeBatchBadge');
+  if (batchBadge) batchBadge.textContent = snap.batch_id ? `批次 #${snap.batch_id}` : '批次 —';
   const setText = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
   setText('rtTarget', String(snap.target_count || 0));
   setText('rtCompleted', String(snap.completed_count || 0));
@@ -3797,7 +4102,12 @@ function openShot(jobId) {
   const img = $('#shotPanelImage');
   const panel = $('#shotPanel');
   if (!img || !panel) return;
-  img.src = jobScreenshotUrl(jobId);
+  const url = jobScreenshotUrl(jobId);
+  img.src = url;
+  const openNew = $('#btnShotOpenNew');
+  if (openNew) openNew.href = url;
+  const tag = $('#shotPanelJobTag');
+  if (tag) tag.textContent = `任务 #${jobId} 失败现场`;
   panel.classList.remove('hidden');
   updateModalScrollLock();
 }
@@ -4157,8 +4467,8 @@ function _tokenCellV2(r) {
   const c2aErr = r.chatgpt2api_error || '';
   const c2aAt = r.chatgpt2api_uploaded_at || '';
   let c2aHtml = '';
-  if (c2a === 'success') c2aHtml = `<div class="acc-v2-sub" title="${esc(c2aAt)}">chatgpt2api: 已导入</div>`;
-  else if (c2a === 'failed') c2aHtml = `<div class="acc-v2-sub" title="${esc(c2aErr || c2aAt)}" style="color:#f56c6c">chatgpt2api: 失败</div>`;
+  if (c2a === 'success') c2aHtml = `<div class="acc-v2-sub" title="${esc(c2aAt)}"><span style="display:inline-block;padding:1px 6px;border-radius:4px;background:#ecfdf5;color:#059669;font-size:11px;font-weight:600;">号池: 已导入</span></div>`;
+  else if (c2a === 'failed') c2aHtml = `<div class="acc-v2-sub" title="${esc(c2aErr || c2aAt)}"><span style="display:inline-block;padding:1px 6px;border-radius:4px;background:#fef2f2;color:#dc2626;font-size:11px;font-weight:600;">号池: 失败</span></div>`;
   if (r.has_access_token) {
     return `<button type="button" class="acc-v2-token-copy" data-account-copy-secret="access_token" data-account-id="${esc(r.id)}" title="复制完整 Token">复制</button>${liveHtml}${c2aHtml}`;
   }
