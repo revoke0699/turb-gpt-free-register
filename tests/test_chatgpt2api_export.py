@@ -36,7 +36,7 @@ def _storage(root: Path) -> dict:
 
 
 class ChatGPT2APIPayloadTests(unittest.TestCase):
-    def test_build_payload_includes_token_email_password_proxy_and_plan(self):
+    def test_build_payload_includes_token_email_password_and_plan_without_proxy(self):
         from core.chatgpt2api_export import build_chatgpt2api_account_payload
 
         payload = build_chatgpt2api_account_payload({
@@ -44,14 +44,18 @@ class ChatGPT2APIPayloadTests(unittest.TestCase):
             "access_token": "eyJ-access",
             "proxy_used": "socks5://127.0.0.1:7897",
             "plan_type": "plus",
-            "extra_json": json.dumps({"registration_password": "Aa1!Bb2@Cc3#"}),
+            "extra_json": json.dumps({
+                "registration_password": "Aa1!Bb2@Cc3#",
+                "proxy": "http://proxy.local:8080",
+            }),
         })
         self.assertEqual(payload["access_token"], "eyJ-access")
         self.assertEqual(payload["email"], "user@example.com")
         self.assertEqual(payload["password"], "Aa1!Bb2@Cc3#")
-        self.assertEqual(payload["proxy"], "socks5://127.0.0.1:7897")
         self.assertEqual(payload["type"], "plus")
         self.assertEqual(payload["source_type"], "web")
+        self.assertNotIn("proxy", payload)
+        self.assertNotIn("proxy_used", payload)
 
     def test_build_payload_returns_none_without_access_token(self):
         from core.chatgpt2api_export import build_chatgpt2api_account_payload
@@ -136,7 +140,8 @@ class ChatGPT2APIExportTests(unittest.TestCase):
         self.assertEqual(kwargs["headers"]["Authorization"], "Bearer admin-key")
         self.assertEqual(kwargs["json"]["accounts"][0]["access_token"], "eyJ-access")
         self.assertEqual(kwargs["json"]["accounts"][0]["password"], "Pw#12345")
-        self.assertEqual(kwargs["json"]["accounts"][0]["proxy"], "http://proxy.local:8080")
+        self.assertNotIn("proxy", kwargs["json"]["accounts"][0])
+        self.assertNotIn("proxy_used", kwargs["json"]["accounts"][0])
         self.assertEqual(kwargs["timeout"], 15)
 
     def test_export_http_error_does_not_raise(self):

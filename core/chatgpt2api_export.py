@@ -100,7 +100,6 @@ def build_chatgpt2api_account_payload(row: dict | None) -> dict | None:
         or row.get("registration_password")
         or ""
     ).strip()
-    proxy = str(row.get("proxy_used") or extra.get("proxy") or "").strip()
     email = str(row.get("email") or "").strip()
     source_type = str(getattr(_cfg, "CHATGPT2API_SOURCE_TYPE", "web") or "web").strip() or "web"
     payload: dict[str, Any] = {
@@ -112,8 +111,6 @@ def build_chatgpt2api_account_payload(row: dict | None) -> dict | None:
         payload["email"] = email
     if password:
         payload["password"] = password
-    if proxy:
-        payload["proxy"] = proxy
     return payload
 
 
