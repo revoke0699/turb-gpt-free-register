@@ -567,11 +567,12 @@
       display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
       padding: 12px 18px; background: #0c1322; border-bottom: 1px solid #1e293b; margin-top: 0;
     }
-    .runtime-log-tools input {
+    .runtime-log-tools input[type="search"] {
       flex: 1; min-width: 180px; margin-top: 0; min-height: 32px; font-size: 12px;
-      background: #090d16; border-color: #334155; color: #f1f5f9; border-radius: 6px;
+      background: #090d16; border: 1px solid #334155; color: #f1f5f9; border-radius: 6px;
+      padding: 0 10px;
     }
-    .runtime-log-tools input:focus { border-color: #38bdf8; outline: none; }
+    .runtime-log-tools input[type="search"]:focus { border-color: #38bdf8; outline: none; }
     .runtime-log-filters {
       display: flex; gap: 4px; background: #090d16; padding: 3px; border-radius: 8px; border: 1px solid #1e293b;
     }
@@ -589,8 +590,52 @@
       transition: all .15s ease;
     }
     .runtime-log-tool-btn:hover { background: #334155; color: #fff; border-color: #475569; }
+    .runtime-log-autoscroll {
+      min-height: 30px; border: 1px solid #334155; border-radius: 6px;
+      background: #1e293b; color: #cbd5e1; font-size: 12px; font-weight: 600;
+      padding: 0 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+      transition: all .15s ease; user-select: none; white-space: nowrap; box-sizing: border-box;
+    }
+    .runtime-log-autoscroll:hover { background: #334155; color: #fff; border-color: #475569; }
+    .runtime-log-autoscroll:has(input:checked) {
+      color: #f1f5f9; border-color: rgba(56, 189, 248, 0.4);
+    }
+    .runtime-log-autoscroll:has(input:checked):hover {
+      border-color: #38bdf8;
+    }
+    .runtime-log-autoscroll input[type="checkbox"] {
+      appearance: none; -webkit-appearance: none;
+      width: 14px; height: 14px; min-width: 14px; max-width: 14px;
+      min-height: 14px; max-height: 14px;
+      margin: 0; padding: 0;
+      border: 1.5px solid #64748b; border-radius: 3px;
+      background: #090d16; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+      position: relative; box-sizing: border-box; flex-shrink: 0;
+      transition: all .15s ease;
+    }
+    .runtime-log-autoscroll:hover input[type="checkbox"]:not(:checked) {
+      border-color: #94a3b8;
+    }
+    .runtime-log-autoscroll input[type="checkbox"]:checked {
+      background: #38bdf8; border-color: #38bdf8;
+    }
+    .runtime-log-autoscroll input[type="checkbox"]:checked::after {
+      content: '';
+      width: 3.5px; height: 7px;
+      border: solid #090d16;
+      border-width: 0 2px 2px 0;
+      transform: rotate(45deg) translate(-0.5px, -0.5px);
+      display: block;
+    }
+    .runtime-log-autoscroll input[type="checkbox"]:focus-visible {
+      outline: 2px solid #38bdf8; outline-offset: 1px;
+    }
     .runtime-log-card .inline-num { color: #94a3b8; }
-    .runtime-log-card .inline-num input { accent-color: #38bdf8; }
+    .runtime-log-card .inline-num input {
+      width: 14px; height: 14px; min-width: 14px; min-height: 14px;
+      accent-color: #38bdf8; margin: 0;
+    }
 
     .runtime-log-box {
       margin-top: 0; background: #090d16; color: #cbd5e1; border: none;
@@ -2680,7 +2725,7 @@
           <button type="button" data-log-level="success">成功</button>
           <button type="button" data-log-level="info">流程</button>
         </div>
-        <label class="inline-num"><input id="runtimeAutoScroll" type="checkbox" checked> 自动滚动</label>
+        <label class="runtime-log-autoscroll" title="新日志到达时自动滚动到底部"><input id="runtimeAutoScroll" type="checkbox" checked> 自动滚动</label>
         <button type="button" class="runtime-log-tool-btn" id="btnCopyRuntimeLogs">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           复制
