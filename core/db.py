@@ -1517,6 +1517,8 @@ def list_account_plan_check_statuses(
         "codex_agent_status", "codex_agent_message",
         "codex_agent_runtime_id", "codex_agent_sub2api_url",
         "codex_agent_sub2api_mode", "codex_agent_sub2api_total",
+        "chatgpt2api_status", "chatgpt2api_error", "chatgpt2api_uploaded_at",
+        "chatgpt2api_added", "chatgpt2api_skipped",
         "totp_setup_status", "totp_setup_ok", "totp_setup_error",
         "totp_setup_message", "totp_setup_trigger", "totp_setup_queued_at",
         "totp_setup_started_at", "totp_setup_completed_at", "totp_setup_checked_at",
@@ -1671,6 +1673,51 @@ def get_account_by_email(email: str) -> dict | None:
     with _LOCK:
         row = _find_by_email(_load_accounts(), email)
         return _decorate_account(row) if row else None
+
+
+def update_account_chatgpt2api(acc_id: int, result: dict | None = None) -> bool:
+    """更新账号推送到 chatgpt2api 号池的结果。"""
+    result = result or {}
+    with _LOCK:
+        accounts = _load_accounts()
+        row = next((r for r in accounts if int(r.get("id") or 0) == int(acc_id)), None)
+        if row is None:
+            return False
+        status = str(result.get("status") or ("success" if result.get("ok") else "failed")).strip() or "failed"
+        row["chatgpt2api_status"] = status
+        row["chatgpt2api_ok"] = bool(result.get("ok")) and status == "success"
+        row["chatgpt2api_uploaded_at"] = result.get("uploaded_at") or _now()
+        row["chatgpt2api_error"] = None if row["chatgpt2api_ok"] else (result.get("message") or result.get("error"))
+        if result.get("added") is not None:
+            row["chatgpt2api_added"] = int(result.get("added") or 0)
+        if result.get("skipped") is not None:
+            row["chatgpt2api_skipped"] = int(result.get("skipped") or 0)
+        if result.get("url") is not None:
+            row["chatgpt2api_url"] = result.get("url")
+        extra_raw = row.get("extra_json")
+        extra = {}
+        if isinstance(extra_raw, str) and extra_raw.strip():
+            try:
+                parsed = json.loads(extra_raw)
+                if isinstance(parsed, dict):
+                    extra = parsed
+            except Exception:
+                extra = {}
+        elif isinstance(extra_raw, dict):
+            extra = dict(extra_raw)
+        extra["chatgpt2api"] = {
+            "status": status,
+            "ok": bool(row.get("chatgpt2api_ok")),
+            "uploaded_at": row.get("chatgpt2api_uploaded_at"),
+            "error": row.get("chatgpt2api_error"),
+            "added": row.get("chatgpt2api_added"),
+            "skipped": row.get("chatgpt2api_skipped"),
+            "url": row.get("chatgpt2api_url"),
+        }
+        row["extra_json"] = json.dumps(extra, ensure_ascii=False)
+        row["updated_at"] = _now()
+        _save_accounts(accounts)
+        return True
 
 
 def update_account_note(acc_id: int, note: str) -> bool:

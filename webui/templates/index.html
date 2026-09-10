@@ -2536,6 +2536,7 @@
           <span class="acc-v2-btn-group-title">批量</span>
           <button type="button" class="jobs-tb-btn jobs-tb-btn--primary" id="btnSetupSelectedTotpV2" disabled title="给选中的账号批量开启 2FA，并在完成后写回 TOTP 密钥">批量开2FA</button>
           <button type="button" class="jobs-tb-btn jobs-tb-btn--primary" id="btnChangeSelectedEmailsV2" disabled title="为选中的账号从指定邮箱来源领取新邮箱并换绑">批量换邮箱</button>
+          <button type="button" class="jobs-tb-btn jobs-tb-btn--good" id="btnUploadSelectedChatgpt2apiV2" disabled title="把选中账号的 access_token 上传到 chatgpt2api 号池">上传chatgpt2api</button>
           <button type="button" class="jobs-tb-btn jobs-tb-btn--good" id="btnNoteSelectedAccountsV2" disabled title="给选中的账号统一设置备注，留空可清空备注">备注</button>
           <button type="button" class="jobs-tb-btn jobs-tb-btn--good" id="btnCopySelectedLinesV2" disabled title="复制选中账号的完整整行，每个账号一行">复制行</button>
           <button type="button" class="jobs-tb-btn jobs-tb-btn--good" id="btnCopySelectedTokensV2" disabled title="复制选中账号的 Token，每个账号一行">复制Token</button>
@@ -4152,14 +4153,21 @@ function _tokenCellV2(r) {
   else if (live === 'running') liveHtml = `<div class="acc-v2-sub" title="${esc(liveAt)}" style="color:#e6a23c">查活: 运行中</div>`;
   else if (live === 'deactivated') liveHtml = `<div class="acc-v2-sub" title="${esc(liveErr || liveAt)}" style="color:#f56c6c">查活: 已废</div>`;
   else if (live === 'failed') liveHtml = `<div class="acc-v2-sub" title="${esc(liveErr || liveAt)}" style="color:#e6a23c">查活: 失败</div>`;
+  const c2a = r.chatgpt2api_status || '';
+  const c2aErr = r.chatgpt2api_error || '';
+  const c2aAt = r.chatgpt2api_uploaded_at || '';
+  let c2aHtml = '';
+  if (c2a === 'success') c2aHtml = `<div class="acc-v2-sub" title="${esc(c2aAt)}">chatgpt2api: 已导入</div>`;
+  else if (c2a === 'failed') c2aHtml = `<div class="acc-v2-sub" title="${esc(c2aErr || c2aAt)}" style="color:#f56c6c">chatgpt2api: 失败</div>`;
   if (r.has_access_token) {
-    return `<button type="button" class="acc-v2-token-copy" data-account-copy-secret="access_token" data-account-id="${esc(r.id)}" title="复制完整 Token">复制</button>${liveHtml}`;
+    return `<button type="button" class="acc-v2-token-copy" data-account-copy-secret="access_token" data-account-id="${esc(r.id)}" title="复制完整 Token">复制</button>${liveHtml}${c2aHtml}`;
   }
-  return `<span class="pill status-failed">无Token</span>${liveHtml}`;
+  return `<span class="pill status-failed">无Token</span>${liveHtml}${c2aHtml}`;
 }
 function _accountsV2MoreMenu(r) {
   const parts = [
     `<button type="button" data-account-copy-secret="copy_line" data-account-id="${esc(r.id)}">复制整行</button>`,
+    `<button type="button" data-account-chatgpt2api="${esc(r.id)}" title="把该账号 access_token 上传到 chatgpt2api 号池" ${r.has_access_token ? '' : 'disabled'}>上传chatgpt2api</button>`,
     `<button type="button" data-account-note="${esc(r.id)}" title="设置/清空该账号备注">备注</button>`,
     `<button type="button" data-account-change-email="${esc(r.id)}" title="从指定邮箱来源领取新邮箱并换绑">换绑邮箱</button>`,
     `<button type="button" data-account-change-email-log="${esc(r.id)}" title="查看最近一次邮箱换绑日志">换绑日志</button>`,
@@ -4247,7 +4255,7 @@ function updateAccountSelectionUi(pageRows = null) {
   const v2Ids = [
     'btnCheckSelectedPlansV2', 'btnExtractSelectedLinksV2',
     'btnRetrySelectedCodexV2', 'btnDownloadSelectedCpaV2', 'btnStopSelectedCodexV2',
-    'btnSetupSelectedTotpV2', 'btnChangeSelectedEmailsV2', 'btnNoteSelectedAccountsV2', 'btnCopySelectedLinesV2', 'btnCopySelectedTokensV2', 'btnCopySelectedEmailsV2',
+    'btnSetupSelectedTotpV2', 'btnChangeSelectedEmailsV2', 'btnUploadSelectedChatgpt2apiV2', 'btnNoteSelectedAccountsV2', 'btnCopySelectedLinesV2', 'btnCopySelectedTokensV2', 'btnCopySelectedEmailsV2',
     'btnDownloadSelectedTxtV2', 'btnArchiveSelectedAccountsV2', 'btnDeleteSelectedAccountsV2',
   ];
   v2Ids.forEach(id => {
@@ -4440,6 +4448,12 @@ async function onAccountsBodyClick(e) {
     } finally {
       copySecretBtn.disabled = false;
     }
+    return;
+  }
+
+  const chatgpt2apiBtn = e.target.closest('[data-account-chatgpt2api]');
+  if (chatgpt2apiBtn) {
+    await uploadOneChatgpt2api(Number(chatgpt2apiBtn.dataset.accountChatgpt2api), chatgpt2apiBtn);
     return;
   }
 
@@ -5234,6 +5248,50 @@ async function uploadOneCodexAgentSub2(id, btn) {
   }
 }
 
+async function uploadOneChatgpt2api(id, btn) {
+  const acc = ACCOUNTS.find(a => Number(a.id) === Number(id));
+  if (!acc) { showToast('账号不存在'); return; }
+  if (!acc.has_access_token) { showToast('该账号没有 access_token'); return; }
+  if (!confirm(`确定上传该账号到 chatgpt2api 号池吗？\n\n${acc.email || ('#' + id)}`)) return;
+  const old = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '上传中…'; }
+  try {
+    await api(`/api/accounts/${encodeURIComponent(id)}/chatgpt2api/upload`, { method:'POST' });
+    showToast('已上传 chatgpt2api');
+    await loadAccounts();
+  } catch(err) {
+    showToast('上传 chatgpt2api 失败: ' + err.message);
+    if (btn) { btn.disabled = false; btn.textContent = old; }
+  }
+}
+
+async function uploadSelectedChatgpt2api() {
+  const ids = Array.from(ACCOUNT_SELECTED);
+  if (ids.length === 0) { showToast('请先选择账号'); return; }
+  const selected = ids.map(id => ACCOUNTS.find(a => Number(a.id) === Number(id))).filter(Boolean);
+  const eligible = selected.filter(a => a.has_access_token);
+  if (!eligible.length) { showToast('选中账号里没有可用 access_token'); return; }
+  if (!confirm(`确定上传选中的 ${eligible.length} 个账号到 chatgpt2api 号池吗？\n\n缺少 Token 的账号会自动跳过。`)) return;
+  const btn = $('#btnUploadSelectedChatgpt2apiV2');
+  const old = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '上传中…'; }
+  try {
+    const r = await api('/api/accounts/chatgpt2api/upload-bulk', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({account_ids: ids}),
+    });
+    const skipped = (r.skipped_count || 0) + (r.failed_count || 0);
+    showToast(skipped ? `已上传 ${r.uploaded_count || 0} 个，跳过/失败 ${skipped} 个` : `已上传 ${r.uploaded_count || 0} 个`);
+    await loadAccounts();
+  } catch(err) {
+    showToast('批量上传 chatgpt2api 失败: ' + err.message);
+    updateAccountSelectionUi();
+  } finally {
+    if (btn) btn.textContent = old;
+  }
+}
+
 async function uploadSelectedCodexAgentSub2() {
   const ids = Array.from(ACCOUNT_SELECTED);
   if (ids.length === 0) { showToast('请先选择账号'); return; }
@@ -5654,6 +5712,7 @@ $('#emailChangeModalV2').addEventListener('click', e => { if (e.target.id === 'e
   bind('btnStopSelectedCodexV2', stopSelectedCodex);
   bind('btnSetupSelectedTotpV2', setupSelectedTotp);
   bind('btnChangeSelectedEmailsV2', () => openEmailChangeModal(Array.from(ACCOUNT_SELECTED)));
+  bind('btnUploadSelectedChatgpt2apiV2', uploadSelectedChatgpt2api);
   bind('btnNoteSelectedAccountsV2', noteSelectedAccounts);
   bind('btnCopySelectedLinesV2', copySelectedAccountLines);
   bind('btnCopySelectedTokensV2', copySelectedAccountTokens);
@@ -6602,6 +6661,7 @@ function configNavIcon(name) {
   if (n.includes('画像') || n.includes('指纹')) return '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>';
   if (n.includes('人工') || n.includes('节奏')) return '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>';
   if (n.includes('提链')) return '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>';
+  if (n.includes('chatgpt2api')) return '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>';
   if (n.includes('Browser') || n.includes('Roxy') || n.includes('Skyvern') || n.includes('注册')) return '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/>';
   return '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>';
 }
@@ -6625,6 +6685,7 @@ function configSectionIntro(name) {
   if (name === '浏览器画像') return '浏览器语言、时区、出口 IP 画像与注册省流量设置。';
   if (name === '代理池') return '代理列表、Resin 模式与套餐/Agent 网络模式。';
   if (name === '提链') return '提链服务地址、CDK 与并发参数。';
+  if (name === 'chatgpt2api') return '注册成功后把官网 access_token 导入 chatgpt2api 号池。';
   return '';
 }
 function configFeatureIcon(key) {
@@ -6644,6 +6705,12 @@ function configFeatureIcon(key) {
     return {
       cls: 'config-switch-v2-icon--flow',
       svg: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>'
+    };
+  }
+  if (key === 'CHATGPT2API_AUTO_EXPORT') {
+    return {
+      cls: 'config-switch-v2-icon--default',
+      svg: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>'
     };
   }
   return {
@@ -7100,7 +7167,7 @@ function renderConfigSectionV2(name, fields) {
     `;
   }
   if (name === '功能开关') {
-    const preferred = ['ENABLE_CODEX_AUTO', 'ENABLE_2FA', 'ENABLE_FLOW_TRIGGER'];
+    const preferred = ['ENABLE_CODEX_AUTO', 'ENABLE_2FA', 'ENABLE_FLOW_TRIGGER', 'CHATGPT2API_AUTO_EXPORT'];
     const ordered = preferred
       .map(k => fields.find(f => f.key === k))
       .filter(Boolean)

@@ -285,6 +285,10 @@ EDITABLE_FIELDS = [
         "label": "启用 Flow 触发", "help": "注册成功后自动调用内部 Flow 接口（不影响注册结果）",
     },
     {
+        "key": "CHATGPT2API_AUTO_EXPORT", "file": "chatgpt2api.py", "type": "bool", "group": "功能开关",
+        "label": "注册后导入 chatgpt2api", "help": "注册成功后自动把 access_token 推到 chatgpt2api 号池；失败不影响注册结果",
+    },
+    {
         "key": "ENABLE_HUMANIZE_DELAY", "file": "humanize.py", "type": "bool", "group": "人工节奏",
         "label": "启用随机停顿", "help": "在注册、OTP、授权等步骤之间加入随机等待，更接近人工操作节奏",
     },
@@ -629,6 +633,19 @@ EDITABLE_FIELDS = [
     {
         "key": "SUB2API_PROXY_KEY", "file": "sub2api.py", "type": "str", "group": "Codex",
         "label": "Agent sub2 代理键", "help": "可选；写入 account.proxy_key，并在 proxies 为空时初始化 proxies[0].proxy_key",
+    },
+    {
+        "key": "CHATGPT2API_API_BASE", "file": "chatgpt2api.py", "type": "str", "group": "chatgpt2api",
+        "label": "chatgpt2api 地址", "help": "例如 http://127.0.0.1:3000；程序会请求 POST /api/accounts",
+    },
+    {
+        "key": "CHATGPT2API_AUTH_KEY", "file": "chatgpt2api.py", "type": "str", "group": "chatgpt2api",
+        "label": "chatgpt2api Auth Key", "help": "管理接口鉴权密钥；请求头 Authorization: Bearer <key>；保存在 .env",
+        "storage": "env", "secret": True,
+    },
+    {
+        "key": "CHATGPT2API_API_TIMEOUT", "file": "chatgpt2api.py", "type": "int", "group": "chatgpt2api",
+        "label": "chatgpt2api 超时", "help": "上传号池请求超时秒数",
     },
     # ---- 接码平台 ----
     # ---- Codex：基础 / CPA / sub2api 配置 ----

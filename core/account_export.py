@@ -533,6 +533,45 @@ def save_account_data(
     )
     logger.info("[Save] 账号及凭证已保存到 SQLite, id=%s, email=%s", row_id, email)
 
+    try:
+        from core.chatgpt2api_export import export_and_record_account
+
+        c2a_result = export_and_record_account(row_id, require_auto_export=True)
+        if c2a_result.get("ok"):
+            logger.info(
+                "[chatgpt2api] 已上传: id=%s, email=%s, added=%s, skipped=%s",
+                row_id,
+                email,
+                c2a_result.get("added"),
+                c2a_result.get("skipped"),
+            )
+        elif c2a_result.get("status") == "skipped":
+            logger.info("[chatgpt2api] 跳过: %s，原因=%s", email, c2a_result.get("message"))
+        else:
+            logger.warning(
+                "[chatgpt2api] 上传失败（不影响注册结果）: %s, HTTP=%s, %s",
+                email,
+                c2a_result.get("http_status") or "无",
+                c2a_result.get("message"),
+            )
+    except Exception as exc:
+        logger.warning(
+            "[chatgpt2api] 上传异常（不影响注册结果）: %s, %s: %s",
+            email,
+            type(exc).__name__,
+            str(exc)[:180],
+        )
+        try:
+            from core.db import update_account_chatgpt2api
+
+            update_account_chatgpt2api(row_id, {
+                "status": "failed",
+                "ok": False,
+                "message": f"{type(exc).__name__}: {str(exc)[:180]}",
+            })
+        except Exception:
+            pass
+
     auto_twofa = False
     try:
         from config import twofa as _twofa_cfg

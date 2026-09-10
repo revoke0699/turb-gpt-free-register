@@ -41,6 +41,7 @@ SECRET_ENV_KEYS: dict[str, str] = {
     "EXTRACT_LINK_CDK": "提链服务 CDK",
     "SUB2API_API_KEY": "sub2api 管理接口 API Key",
     "SUB2API_API_TOKEN": "sub2api 管理接口鉴权 Token（旧配置名，兼容）",
+    "CHATGPT2API_AUTH_KEY": "chatgpt2api 管理接口 Auth Key",
     "SMS_API_KEY": "接码平台 API Key（如 GrizzlySMS）",
     "L_ADMIN_AUTH_CODE": "本地 L 接码服务 ADMIN_AUTH_CODE",
     "H_ADMIN_AUTH_CODE": "本地 H 接码服务 ADMIN_AUTH_CODE",

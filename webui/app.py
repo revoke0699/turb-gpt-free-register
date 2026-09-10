@@ -141,6 +141,8 @@ def _compact_account_for_list(row: dict) -> dict:
         # Codex / Agent 状态提示。
         "codex_error", "codex_agent_message", "codex_agent_runtime_id",
         "codex_agent_sub2api_url", "codex_agent_sub2api_mode", "codex_agent_sub2api_total",
+        "chatgpt2api_status", "chatgpt2api_error", "chatgpt2api_uploaded_at",
+        "chatgpt2api_added", "chatgpt2api_skipped",
         "totp_setup_error", "totp_setup_message", "totp_setup_started_at", "totp_setup_completed_at",
         "email_change_status", "email_change_error", "email_change_new_email",
         "email_change_started_at", "email_change_completed_at",
@@ -1304,6 +1306,81 @@ def create_app(auth_code: str | None = None) -> Flask:
             try:
                 result = _upload_account_codex_agent_to_sub2(acc)
                 uploaded.append({"id": acc_id, "email": email, "url": result.get("url"), "status_code": result.get("status_code")})
+            except Exception as exc:
+                failed.append({"id": acc_id, "email": email, "error": f"{type(exc).__name__}: {exc}"})
+        return jsonify({
+            "ok": True,
+            "uploaded": uploaded,
+            "uploaded_count": len(uploaded),
+            "failed": failed,
+            "failed_count": len(failed),
+            "skipped": skipped,
+            "skipped_count": len(skipped),
+        })
+
+    def _upload_account_to_chatgpt2api(acc: dict) -> dict:
+        from core.chatgpt2api_export import export_and_record_account
+
+        acc_id = int(acc.get("id") or 0)
+        result = export_and_record_account(acc_id, require_auto_export=False)
+        if result.get("status") == "skipped" and "access_token" in str(result.get("message") or ""):
+            raise RuntimeError(result.get("message") or "缺少 access_token")
+        if not result.get("ok"):
+            raise RuntimeError(result.get("message") or "上传 chatgpt2api 失败")
+        return result
+
+    @app.post("/api/accounts/<int:acc_id>/chatgpt2api/upload")
+    def api_account_chatgpt2api_upload(acc_id: int):
+        """单账号把 ChatGPT access_token 上传到 chatgpt2api 号池。"""
+        acc = db.get_account(acc_id)
+        if not acc:
+            return jsonify({"ok": False, "error": "账号不存在"}), 404
+        if not str(acc.get("access_token") or "").strip():
+            return jsonify({"ok": False, "error": "缺少 access_token"}), 400
+        try:
+            result = _upload_account_to_chatgpt2api(acc)
+        except Exception as exc:
+            return jsonify({"ok": False, "error": f"{type(exc).__name__}: {exc}"}), 400
+        return jsonify({"ok": True, "account_id": acc_id, "email": acc.get("email"), "result": result})
+
+    @app.post("/api/accounts/chatgpt2api/upload-bulk")
+    def api_accounts_chatgpt2api_upload_bulk():
+        """批量把 ChatGPT access_token 上传到 chatgpt2api。Body {account_ids:[...]}。"""
+        data = request.get_json(silent=True) or {}
+        ids = data.get("account_ids") or data.get("ids") or []
+        if not isinstance(ids, list) or not ids:
+            return jsonify({"ok": False, "error": "account_ids 必须是非空数组"}), 400
+        if len(ids) > 500:
+            return jsonify({"ok": False, "error": "单次最多提交 500 个账号"}), 400
+
+        uploaded, failed, skipped = [], [], []
+        seen = set()
+        for raw in ids:
+            try:
+                acc_id = int(raw)
+            except Exception:
+                skipped.append({"id": raw, "reason": "ID 非法"})
+                continue
+            if acc_id in seen:
+                continue
+            seen.add(acc_id)
+            acc = db.get_account(acc_id)
+            if not acc:
+                skipped.append({"id": acc_id, "reason": "账号不存在"})
+                continue
+            email = acc.get("email")
+            if not str(acc.get("access_token") or "").strip():
+                skipped.append({"id": acc_id, "email": email, "reason": "缺少 access_token"})
+                continue
+            try:
+                result = _upload_account_to_chatgpt2api(acc)
+                uploaded.append({
+                    "id": acc_id,
+                    "email": email,
+                    "url": result.get("url"),
+                    "added": result.get("added"),
+                    "skipped": result.get("skipped"),
+                })
             except Exception as exc:
                 failed.append({"id": acc_id, "email": email, "error": f"{type(exc).__name__}: {exc}"})
         return jsonify({

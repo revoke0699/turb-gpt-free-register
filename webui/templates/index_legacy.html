@@ -589,6 +589,7 @@
             <span class="btn-group-title">批量</span>
             <button class="btn primary" id="btnSetupSelectedTotp" disabled title="给选中的账号批量开启 2FA，并在完成后写回 TOTP 密钥">批量开2FA</button>
             <button class="btn primary" id="btnChangeSelectedEmails" disabled title="为选中的账号从指定来源领取新邮箱并换绑">批量换邮箱</button>
+            <button class="btn good" id="btnUploadSelectedChatgpt2api" disabled title="把选中账号的 access_token 上传到 chatgpt2api 号池">上传chatgpt2api</button>
             <button class="btn good" id="btnNoteSelectedAccounts" disabled title="给选中的账号统一设置备注，留空可清空备注">备注</button>
             <button class="btn good" id="btnCopySelectedLines" disabled title="复制选中账号的完整整行，每个账号一行">复制行</button>
             <button class="btn good" id="btnCopySelectedTokens" disabled title="复制选中账号的 Token，每个账号一行">复制Token</button>
@@ -1579,12 +1580,18 @@ function _liveStatusSub(r) {
   const err = r.live_check_error || '';
   const at = r.live_checked_at || '';
   const fp = r.live_check_fingerprint_text || '';
-  if (s === 'live') return `<div class="sub-cell" title="${esc([at, fp].filter(Boolean).join('\n'))}">查活: 正常${fp ? ` · ${esc(fp)}` : ''}</div>`;
-  if (s === 'queued') return `<div class="sub-cell" style="color:#e6a23c">查活: 排队</div>`;
-  if (s === 'running') return `<div class="sub-cell" style="color:#e6a23c">查活: 运行中</div>`;
-  if (s === 'deactivated') return `<div class="sub-cell" style="color:#f56c6c" title="${esc(err || at)}">查活: 已废</div>`;
-  if (s === 'failed') return `<div class="sub-cell" style="color:#e6a23c" title="${esc(err || at)}">查活: 失败</div>`;
-  return '';
+  let liveHtml = '';
+  if (s === 'live') liveHtml = `<div class="sub-cell" title="${esc([at, fp].filter(Boolean).join('\n'))}">查活: 正常${fp ? ` · ${esc(fp)}` : ''}</div>`;
+  else if (s === 'queued') liveHtml = `<div class="sub-cell" style="color:#e6a23c">查活: 排队</div>`;
+  else if (s === 'running') liveHtml = `<div class="sub-cell" style="color:#e6a23c">查活: 运行中</div>`;
+  else if (s === 'deactivated') liveHtml = `<div class="sub-cell" style="color:#f56c6c" title="${esc(err || at)}">查活: 已废</div>`;
+  else if (s === 'failed') liveHtml = `<div class="sub-cell" style="color:#e6a23c" title="${esc(err || at)}">查活: 失败</div>`;
+  const c2a = r.chatgpt2api_status || '';
+  const c2aErr = r.chatgpt2api_error || '';
+  let c2aHtml = '';
+  if (c2a === 'success') c2aHtml = `<div class="sub-cell" title="${esc(r.chatgpt2api_uploaded_at || '')}">chatgpt2api: 已导入</div>`;
+  else if (c2a === 'failed') c2aHtml = `<div class="sub-cell" style="color:#f56c6c" title="${esc(c2aErr)}">chatgpt2api: 失败</div>`;
+  return `${liveHtml}${c2aHtml}`;
 }
 function renderAccounts() {
   const p = PAGERS.accounts;
@@ -1605,7 +1612,7 @@ function renderAccounts() {
       <td class="muted">${esc(r.created_at || '-')}</td>
       <td class="actions actions-cell">
         <div class="account-row-actions">
-          <div class="account-action-group"><button class="primary" data-account-copy-secret="access_token" data-account-id="${esc(r.id)}" ${r.has_access_token ? '' : 'disabled'}>复制Token</button> <button class="good" data-account-copy-secret="copy_line" data-account-id="${esc(r.id)}">复制整行</button></div>
+          <div class="account-action-group"><button class="primary" data-account-copy-secret="access_token" data-account-id="${esc(r.id)}" ${r.has_access_token ? '' : 'disabled'}>复制Token</button> <button class="good" data-account-copy-secret="copy_line" data-account-id="${esc(r.id)}">复制整行</button> <button data-account-chatgpt2api="${esc(r.id)}" ${r.has_access_token ? '' : 'disabled'} title="把该账号 access_token 上传到 chatgpt2api 号池">上传chatgpt2api</button></div>
           <div class="account-action-group"><button data-account-note="${esc(r.id)}" title="设置/清空该账号备注">备注</button> <button data-account-change-email="${esc(r.id)}">换绑邮箱</button> <button data-account-change-email-log="${esc(r.id)}">换绑日志</button> <button data-account-live-check="${esc(r.id)}" title="重新登录该账号，成功则刷新最新 AT/accessToken">查活</button> <button data-account-live-log="${esc(r.email)}" title="查看该账号最近一次查活日志">查活日志</button> <button data-account-totp-log="${esc(r.email)}" title="查看该账号最近一次 2FA 设置日志">2FA日志</button> ${_planAction(r)} ${_extractLinkAction(r)}</div>
           <div class="account-action-group">${_codexAction(r)} <button data-codex-log="${esc(r.email)}" title="查看该账号最近一次 Codex 补跑日志">补跑日志</button></div>
           <div class="account-action-group danger-zone"><button data-account-archive="${esc(r.id)}" data-archived="${r.archived ? '0' : '1'}" title="${r.archived ? '恢复到默认账号列表' : '归档后默认账号列表不再显示'}">${r.archived ? '恢复' : '归档'}</button> <button class="danger" data-account-delete="${esc(r.id)}" data-email="${esc(r.email)}">删除</button></div>
@@ -1631,6 +1638,7 @@ function updateAccountSelectionUi(pageRows = null) {
   const archiveSelectedBtn = $('#btnArchiveSelectedAccounts');
   const setupTotpBtn = $('#btnSetupSelectedTotp');
   const changeEmailsBtn = $('#btnChangeSelectedEmails');
+  const uploadChatgpt2apiBtn = $('#btnUploadSelectedChatgpt2api');
   if (hint) hint.textContent = `已选 ${ACCOUNT_SELECTED.size}`;
   if (bulkBtn) bulkBtn.disabled = ACCOUNT_SELECTED.size === 0;
   if (retryBulkBtn) retryBulkBtn.disabled = ACCOUNT_SELECTED.size === 0;
@@ -1644,6 +1652,7 @@ function updateAccountSelectionUi(pageRows = null) {
   if (noteSelectedBtn) noteSelectedBtn.disabled = ACCOUNT_SELECTED.size === 0;
   if (setupTotpBtn) setupTotpBtn.disabled = ACCOUNT_SELECTED.size === 0;
   if (changeEmailsBtn) changeEmailsBtn.disabled = ACCOUNT_SELECTED.size === 0;
+  if (uploadChatgpt2apiBtn) uploadChatgpt2apiBtn.disabled = ACCOUNT_SELECTED.size === 0;
   if (archiveSelectedBtn) {
     archiveSelectedBtn.disabled = ACCOUNT_SELECTED.size === 0;
     archiveSelectedBtn.textContent = SHOW_ARCHIVED_ACCOUNTS ? '恢复选中' : '归档选中';
@@ -1931,6 +1940,12 @@ $('#accountsBody').addEventListener('click', async (e) => {
     return;
   }
 
+  const chatgpt2apiBtn = e.target.closest('[data-account-chatgpt2api]');
+  if (chatgpt2apiBtn) {
+    await uploadOneChatgpt2api(Number(chatgpt2apiBtn.dataset.accountChatgpt2api), chatgpt2apiBtn);
+    return;
+  }
+
   const qrBtn = e.target.closest('[data-qr-url]');
   if (qrBtn) {
     const url = qrBtn.dataset.qrUrl || '';
@@ -2024,6 +2039,7 @@ $('#btnDownloadSelectedTxt').addEventListener('click', downloadSelectedAccountTx
 $('#btnNoteSelectedAccounts').addEventListener('click', noteSelectedAccounts);
 $('#btnSetupSelectedTotp').addEventListener('click', setupSelectedTotp);
 $('#btnChangeSelectedEmails').addEventListener('click', () => changeAccountEmails(Array.from(ACCOUNT_SELECTED)));
+$('#btnUploadSelectedChatgpt2api').addEventListener('click', uploadSelectedChatgpt2api);
 $('#btnExtractSelectedLinks').addEventListener('click', extractSelectedLinks);
 $('#btnRetrySelectedCodex').addEventListener('click', retrySelectedCodex);
 $('#btnDownloadSelectedCpa').addEventListener('click', downloadSelectedCpa);
@@ -2407,6 +2423,53 @@ async function generateSelectedCodexAgents() {
     await pollAccountPlanStatuses();
   } catch(err) {
     showToast('批量生成失败: ' + err.message);
+    updateAccountSelectionUi();
+  } finally {
+    btn.textContent = old;
+  }
+}
+
+async function uploadOneChatgpt2api(id, btn) {
+  const acc = ACCOUNTS.find(a => Number(a.id) === Number(id));
+  if (!acc) { showToast('账号不存在'); return; }
+  if (!acc.has_access_token) { showToast('该账号没有 access_token'); return; }
+  if (!confirm(`确定上传该账号到 chatgpt2api 号池吗？\n\n${acc.email || ('#' + id)}`)) return;
+  const old = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '上传中…';
+  try {
+    await api(`/api/accounts/${encodeURIComponent(id)}/chatgpt2api/upload`, { method:'POST' });
+    showToast('已上传 chatgpt2api');
+    await loadAccounts();
+  } catch(err) {
+    showToast('上传 chatgpt2api 失败: ' + err.message);
+    btn.disabled = false;
+    btn.textContent = old;
+  }
+}
+
+async function uploadSelectedChatgpt2api() {
+  const ids = Array.from(ACCOUNT_SELECTED);
+  if (ids.length === 0) { showToast('请先选择账号'); return; }
+  const selected = ids.map(id => ACCOUNTS.find(a => Number(a.id) === Number(id))).filter(Boolean);
+  const eligible = selected.filter(a => a.has_access_token);
+  if (!eligible.length) { showToast('选中账号里没有可用 access_token'); return; }
+  if (!confirm(`确定上传选中的 ${eligible.length} 个账号到 chatgpt2api 号池吗？\n\n缺少 Token 的账号会自动跳过。`)) return;
+  const btn = $('#btnUploadSelectedChatgpt2api');
+  const old = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '上传中…';
+  try {
+    const r = await api('/api/accounts/chatgpt2api/upload-bulk', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({account_ids: ids}),
+    });
+    const skipped = (r.skipped_count || 0) + (r.failed_count || 0);
+    showToast(skipped ? `已上传 ${r.uploaded_count || 0} 个，跳过/失败 ${skipped} 个` : `已上传 ${r.uploaded_count || 0} 个`);
+    await loadAccounts();
+  } catch(err) {
+    showToast('批量上传 chatgpt2api 失败: ' + err.message);
     updateAccountSelectionUi();
   } finally {
     btn.textContent = old;
