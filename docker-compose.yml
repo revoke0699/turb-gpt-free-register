@@ -1,12 +1,12 @@
-# 方案 A：WebUI + Cloak 无头浏览器（同一容器）
+# 方案 A：WebUI + Cloak/Camoufox 有头浏览器（Xvfb）
 #
 #   cp .env.example .env    # 填写 WEBUI_AUTH_CODE 等
 #   docker compose up --build
-#   打开 http://127.0.0.1:5000
+#   WebUI：http://127.0.0.1:5000
+#   看浏览器窗口：http://127.0.0.1:6080/vnc.html
 #
-# 本机默认驱动仍是 roxy；容器内由下方环境变量覆盖为 cloak。
-# 不要在这个镜像里选 Roxy/Chromix：Roxy 是宿主机桌面端，Chromix 仅 Windows。
-# Docker Desktop 建议给虚拟机至少 4GB 内存。
+# 注册驱动跟 .env / WebUI 配置走（不要在这个镜像里选 Roxy/Chromix）。
+# Docker Desktop / Colima 建议至少 8GB 内存。
 
 services:
   webui:
@@ -14,17 +14,20 @@ services:
     image: turb-gpt-free-register:cloak
     ports:
       - "5000:5000"
+      - "6080:6080"
     shm_size: "2gb"
     init: true
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
       TURB_IN_DOCKER: "1"
-      REGISTRATION_DRIVER: cloak
-      CLOAK_HEADLESS: "True"
+      DISPLAY: ":99"
+      CLOAK_HEADLESS: "False"
+      CAMOUFOX_HEADLESS: "False"
       CODEX_OAUTH_DRIVER: same_as_registration
       CLOAKBROWSER_CACHE_DIR: /opt/cloakbrowser
     volumes:
       # 代码、.env、turb.sqlite3、注册日志都走宿主机目录，容器重启不丢数据。
       - .:/app
+    entrypoint: ["/app/docker-entrypoint.sh"]
     command: ["python", "web.py", "--host", "0.0.0.0", "--port", "5000"]

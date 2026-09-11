@@ -186,16 +186,19 @@ pip install -r requirements.txt
 node --version
 ```
 
-### Docker（Cloak 无头）
+### Docker（Cloak / Camoufox 有头）
 
-同一容器跑 WebUI 和 CloakBrowser，适合不想在本机装浏览器的情况。Roxy / Chromix 不能放进这个镜像。
+同一容器跑 WebUI 和指纹浏览器。容器内用 Xvfb 虚拟显示，保持有头启动（不是 headless）。Roxy / Chromix 不能放进这个镜像。
 
 ```bash
 cp .env.example .env   # 填写 WEBUI_AUTH_CODE 等
 docker compose up --build
 ```
 
-浏览器打开 `http://127.0.0.1:5000`。容器内强制 `REGISTRATION_DRIVER=cloak`、`CLOAK_HEADLESS=True`，`turb.sqlite3` 和 `注册日志/` 仍写在当前目录。需要 `shm_size=2gb`（compose 已配置）。Docker Desktop 建议至少 4GB 内存。
+- WebUI：`http://127.0.0.1:5000`
+- 看浏览器窗口：`http://127.0.0.1:6080/vnc.html`
+
+`turb.sqlite3` 和 `注册日志/` 仍写在当前目录。镜像构建时会预拉 Cloak Chromium 和 Camoufox Firefox。需要 `shm_size=2gb`（compose 已配置）。建议至少 8GB 内存。
 
 ### 密钥配置（.env）
 

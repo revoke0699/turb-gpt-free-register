@@ -61,13 +61,14 @@ class CloakDockerLaunchArgsTests(unittest.TestCase):
              patch.object(_cfg_mod(), "CLOAK_USER_DATA_DIR", ""), \
              patch.object(_cfg_mod(), "CLOAK_FINGERPRINT_SEED", ""), \
              patch.object(_cfg_mod(), "CLOAK_LICENSE_KEY", ""), \
-             patch.object(_cfg_mod(), "CLOAK_HEADLESS", True), \
+             patch.object(_cfg_mod(), "CLOAK_HEADLESS", False), \
              patch.object(_cfg_mod(), "CLOAK_HUMANIZE", False), \
              patch.object(_cfg_mod(), "CLOAK_GEOIP", False):
             from core.cloakbrowser_driver import build_cloak_driver
             build_cloak_driver(proxy="")
 
         args = launch.call_args.kwargs.get("args") or []
+        self.assertFalse(launch.call_args.kwargs.get("headless"))
         self.assertIn("--no-sandbox", args)
         self.assertIn("--disable-dev-shm-usage", args)
         persist.assert_not_called()
