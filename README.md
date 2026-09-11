@@ -186,6 +186,17 @@ pip install -r requirements.txt
 node --version
 ```
 
+### Docker（Cloak 无头）
+
+同一容器跑 WebUI 和 CloakBrowser，适合不想在本机装浏览器的情况。Roxy / Chromix 不能放进这个镜像。
+
+```bash
+cp .env.example .env   # 填写 WEBUI_AUTH_CODE 等
+docker compose up --build
+```
+
+浏览器打开 `http://127.0.0.1:5000`。容器内强制 `REGISTRATION_DRIVER=cloak`、`CLOAK_HEADLESS=True`，`turb.sqlite3` 和 `注册日志/` 仍写在当前目录。需要 `shm_size=2gb`（compose 已配置）。Docker Desktop 建议至少 4GB 内存。
+
 ### 密钥配置（.env）
 
 重要 API Key 请放在项目根目录 `.env`，不要写进 `config/*.py`。

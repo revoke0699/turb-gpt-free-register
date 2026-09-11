@@ -3,15 +3,50 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import shutil
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from config import cloakbrowser as _cfg
 
 logger = logging.getLogger(__name__)
+
+_DOCKER_CHROMIUM_ARGS = ("--no-sandbox", "--disable-dev-shm-usage")
+
+
+def running_in_docker() -> bool:
+    """容器内为 True。TURB_IN_DOCKER 优先；未设置时看 /.dockerenv。"""
+    flag = str(os.environ.get("TURB_IN_DOCKER", "") or "").strip().lower()
+    if flag in {"1", "true", "yes", "on", "y"}:
+        return True
+    if flag in {"0", "false", "no", "off", "n"}:
+        return False
+    return Path("/.dockerenv").exists()
+
+
+def merge_cloak_launch_args(existing: list | None = None, *, in_docker: bool | None = None) -> list[str]:
+    """合并用户 CLOAK_EXTRA_ARGS；Docker 内补 Chromium 沙箱/共享内存参数。"""
+    args: list[str] = []
+    seen: set[str] = set()
+    for item in existing or []:
+        text = str(item or "").strip()
+        if not text or text in seen:
+            continue
+        args.append(text)
+        seen.add(text)
+    if in_docker is None:
+        in_docker = running_in_docker()
+    if in_docker:
+        for flag in _DOCKER_CHROMIUM_ARGS:
+            if flag not in seen:
+                args.append(flag)
+                seen.add(flag)
+    return args
+
 
 
 @dataclass
@@ -596,7 +631,7 @@ def build_cloak_driver(proxy: str | None = None) -> tuple[CloakSeleniumDriver, C
     launch, launch_persistent_context, engine = import_stealth_browser()
     log_tag = stealth_log_tag()
 
-    launch_args = list(getattr(_cfg, "CLOAK_EXTRA_ARGS", []) or [])
+    launch_args = merge_cloak_launch_args(getattr(_cfg, "CLOAK_EXTRA_ARGS", []) or [])
     seed = str(getattr(_cfg, "CLOAK_FINGERPRINT_SEED", "") or "").strip()
     if seed:
         launch_args.append(f"--fingerprint={seed}")
