@@ -7002,13 +7002,14 @@ function configGroupSlug(name) {
 }
 function configGroupDisplayName(name) {
   if (name === 'CloakBrowser') return '本地指纹浏览器';
+  if (name === 'Camoufox') return 'Camoufox';
   return name;
 }
 function configNavIcon(name) {
   const n = String(name || '');
   if (n.includes('网站') || n.includes('WebUI')) return '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>';
   if (n.includes('开关') || n.includes('功能')) return '<rect x="1" y="8" width="22" height="8" rx="4"/><circle cx="7" cy="12" r="2.8"/>';
-  if (n === '本地指纹浏览器' || n.includes('Cloak')) return '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/>';
+  if (n === '本地指纹浏览器' || n.includes('Cloak') || n.includes('Camoufox')) return '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/>';
   if (n.includes('邮箱') || n.includes('OTP')) return '<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><path d="M22 6l-10 7L2 6"/>';
   if (n.includes('接码') || n.includes('SMS')) return '<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/>';
   if (n.includes('Codex')) return '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>';
@@ -7030,6 +7031,7 @@ function configSectionIntro(name) {
   if (name === '功能开关') return '';
   if (name === '注册方式') return '选择账号注册时使用的自动化方式。';
   if (name === 'CloakBrowser') return '本地指纹浏览器运行参数、语言时区与代理设置。';
+  if (name === 'Camoufox') return 'Camoufox Firefox 反检测浏览器运行参数、语言时区与代理设置。';
   if (name === 'Browser Use') return 'Browser Use Cloud 远端浏览器与代理参数。';
   if (name === 'Skyvern') return 'Skyvern Browser Sessions 与代理参数。';
   if (name === 'RoxyBrowser') return 'RoxyBrowser API、环境与代理相关设置。';
@@ -7093,6 +7095,7 @@ function registrationDriverChoices() {
     { value: 'roxy', label: 'RoxyBrowser' },
     { value: 'cloak', label: '本地指纹浏览器' },
     { value: 'chromix', label: 'Chromix (Windows)' },
+    { value: 'camoufox', label: 'Camoufox (Firefox)' },
     { value: 'browser_use', label: 'browser_use' },
     { value: 'skyvern', label: 'skyvern' },
   ];
@@ -7277,6 +7280,7 @@ function codexOauthDriverChoices() {
     { value: 'roxy', label: 'RoxyBrowser' },
     { value: 'cloak', label: '本地指纹浏览器' },
     { value: 'chromix', label: 'Chromix (Windows)' },
+    { value: 'camoufox', label: 'Camoufox (Firefox)' },
     { value: 'browser_use', label: 'browser_use' },
     { value: 'skyvern', label: 'skyvern' },
     { value: 'same_as_registration', label: '跟随注册驱动' },

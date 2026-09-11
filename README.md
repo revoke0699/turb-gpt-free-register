@@ -1,10 +1,11 @@
 # Turb GPT Free Register
 
-ChatGPT / OpenAI 账号自动注册与 Codex OAuth 授权工具。当前项目支持三套注册驱动：
+ChatGPT / OpenAI 账号自动注册与 Codex OAuth 授权工具。当前项目支持多套注册驱动：
 
 - **protocol**：原纯协议注册，基于 `curl_cffi` + Sentinel/PoW。
 - **roxy**：RoxyBrowser 指纹浏览器 + Selenium 自动化注册，兼容新版页面流，例如 `create-account/password`、`about-you` 年龄/生日表单、地区本地化页面等。
 - **cloak**：CloakBrowser + Playwright 适配层自动化注册，支持免费 binary、无头模式、humanize、固定 fingerprint seed、代理 geoip。
+- **camoufox**：Camoufox（Firefox 反检测浏览器）+ Playwright 适配层，支持 geoip、humanize、WebRTC 阻断和按出口匹配语言/时区。
 - **browser_use**：Browser Use Cloud stealth Chromium + Playwright（可选住宅代理，无需本机安装 Roxy）。
 - **skyvern**：Skyvern Browser Sessions 云端浏览器 + Playwright CDP。
 
@@ -27,12 +28,14 @@ ChatGPT / OpenAI 账号自动注册与 Codex OAuth 授权工具。当前项目�
   - `REGISTRATION_DRIVER = "protocol"`
   - `REGISTRATION_DRIVER = "roxy"`
   - `REGISTRATION_DRIVER = "cloak"`
+  - `REGISTRATION_DRIVER = "camoufox"`
   - `REGISTRATION_DRIVER = "browser_use"`
   - `REGISTRATION_DRIVER = "skyvern"`
 - 支持 RoxyBrowser 一号一环境：自动创建、打开、关闭、删除 Roxy Profile。
 - 支持 Roxy 无头启动：`ROXY_OPEN_HEADLESS=True`。
 - 支持 CloakBrowser：免费 binary、无头模式、humanize、固定 fingerprint seed、按出口 IP 自动匹配语言/时区/WebRTC。
-- Roxy / Cloak 浏览器注册已兼容：
+- 支持 Camoufox：Firefox 反检测浏览器，humanize、geoip、阻止 WebRTC，页面操作复用 Cloak 适配层。
+- Roxy / Cloak / Camoufox 浏览器注册已兼容：
   - 填邮箱后直接进入邮箱验证码页；
   - 填邮箱后先进入 `create-account/password`，自动设置密码再继续；
   - `about-you/profile` 页面直接输入年龄数字；
@@ -66,6 +69,7 @@ EMAIL_SOURCE = "outlook,generic_api,imap"
   - `CODEX_OAUTH_DRIVER = "protocol"`
   - `CODEX_OAUTH_DRIVER = "roxy"`
   - `CODEX_OAUTH_DRIVER = "cloak"`
+  - `CODEX_OAUTH_DRIVER = "camoufox"`
   - `CODEX_OAUTH_DRIVER = "browser_use"`
   - `CODEX_OAUTH_DRIVER = "same_as_registration"`
 - 支持 CPA 管理接口生成授权 URL，并提交 OAuth callback。
@@ -84,7 +88,7 @@ EMAIL_SOURCE = "outlook,generic_api,imap"
 - 批量补跑 Codex，补跑线程数每次提交即时生效。
 - 管理账号、邮箱池、Codex 凭证；账号页支持单个/批量换绑邮箱并指定新邮箱来源，换绑后同时展示原邮箱与当前邮箱，支持查看换绑日志，并自动查活刷新 AT。
 - 邮箱池导入默认不创建账号；勾选“导入后默认视为注册成功账号”后，会将邮箱池标记为已用并同步显示在账号页，可直接批量补跑 Codex。
-- Roxy/Cloak 浏览器注册完成后统计整个浏览器会话的上传、下载和总流量，任务列表与账号扩展信息均会保存结果；Browser Use/Skyvern 云端浏览器不启用本地流量监听、资源拦截或 JS 覆盖率采集。
+- Roxy/Cloak/Camoufox 浏览器注册完成后统计整个浏览器会话的上传、下载和总流量，任务列表与账号扩展信息均会保存结果；Browser Use/Skyvern 云端浏览器不启用本地流量监听、资源拦截或 JS 覆盖率采集。Camoufox 为 Firefox，省流量走 Playwright 路由，不启用 Chrome JS 覆盖率。
 - 配置页支持热加载，保存后无需重启。
 - Roxy 团队/项目可在配置页获取并保存。
 
@@ -107,7 +111,7 @@ EMAIL_SOURCE = "outlook,generic_api,imap"
 
 #### 省流量模式
 
-在 WebUI「浏览器画像」中开启「本地浏览器省流量模式」，或在 `.env` 设置（仅 Roxy/Cloak 生效）：
+在 WebUI「浏览器画像」中开启「本地浏览器省流量模式」，或在 `.env` 设置（仅 Roxy/Cloak/Camoufox 生效）：
 
 ```dotenv
 BROWSER_DATA_SAVER_MODE=True
@@ -381,7 +385,7 @@ REMAIL_SUPPLY_POLICY=public_only
 #### 使用 RoxyBrowser 注册
 
 ```python
-REGISTRATION_DRIVER = "roxy"  # 可选 protocol / roxy / cloak
+REGISTRATION_DRIVER = "roxy"  # 可选 protocol / roxy / cloak / chromix / camoufox
 ROXY_API_BASE = "http://127.0.0.1:50100"
 ROXY_API_TOKEN = "你的Roxy API Key"
 ROXY_WORKSPACE_ID = "你的workspaceId"
@@ -438,6 +442,42 @@ CLOAK_USER_DATA_DIR = ""        # 留空临时环境；填路径可持久化 pro
 - 如果你通过项目代理池使用代理，请在 `config/proxy.py` 的 `PROXY_POOL` 填写代理；如果你使用系统代理/VPN，也会按当前实际出口 IP 自动定位。
 - 免费版没有在项目侧限制窗口数；本项目每个注册任务会启动一个 CloakBrowser 实例，即一个实例一套指纹。
 - WebUI 中，`Codex授权驱动` 位于「CPA / Codex」分组，对应 `config/codex.py` 的 `CODEX_OAUTH_DRIVER`。
+
+#### 使用 Camoufox 注册
+
+先安装依赖并下载 Camoufox 浏览器：
+
+```bash
+pip install -r requirements.txt
+python -m camoufox fetch
+```
+
+然后在 `config/roxybrowser.py` 或 WebUI 配置页把注册驱动改为：
+
+```python
+REGISTRATION_DRIVER = "camoufox"
+```
+
+Camoufox 专用配置在 `config/camoufox.py`：
+
+```python
+CAMOUFOX_HEADLESS = False       # True=无头；False=显示窗口
+CAMOUFOX_HUMANIZE = True        # 人工鼠标轨迹
+CAMOUFOX_GEOIP = True           # 按当前出口 IP 自动匹配时区/经纬度
+CAMOUFOX_LOCALE = ""            # 留空自动；也可强制如 ja-JP / en-US
+CAMOUFOX_TIMEZONE = ""          # 留空自动；也可强制如 Asia/Tokyo
+CAMOUFOX_USE_PROXY = True       # 把代理池或任务代理传给 Camoufox
+CAMOUFOX_BLOCK_WEBRTC = True    # 防止 STUN 泄漏真实 IP
+CAMOUFOX_OS = ""                # 留空随机；可填 windows / macos / linux
+CAMOUFOX_USER_DATA_DIR = ""     # 留空每次临时 profile；填路径可持久化
+```
+
+说明：
+
+- Camoufox 是 Firefox 内核，页面操作复用 Cloak 的 Playwright 适配层，注册步骤与 Cloak/Chromix 相同。
+- 指纹由 Camoufox/BrowserForge 生成，没有 Cloak 那种 fingerprint seed。
+- 省流量模式走 Playwright 路由，不走 Chrome CDP；Firefox 没有 JS 精确覆盖率。
+- 未执行 `python -m camoufox fetch` 时启动会失败，并提示该命令。
 
 #### 使用协议注册
 

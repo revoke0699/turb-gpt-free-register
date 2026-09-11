@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import shutil
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -126,12 +127,14 @@ class _SwitchTo:
 class CloakSeleniumDriver:
     """只实现本项目 Roxy Selenium 流程实际用到的 WebDriver 子集。"""
 
-    def __init__(self, browser: Any, context: Any | None, page: Any):
+    def __init__(self, browser: Any, context: Any | None, page: Any, lifecycle: Any | None = None):
         self.browser = browser
         self.context = context
         self.page = page
         self._page_load_timeout_ms = int(getattr(_cfg, "CLOAK_SELENIUM_TIMEOUT", 90) or 90) * 1000
         self._cdp_client = None
+        self._lifecycle = lifecycle
+        self._temp_profile_dir = None
         self.switch_to = _SwitchTo(self)
 
     @property
@@ -210,6 +213,19 @@ class CloakSeleniumDriver:
             self.browser.close()
         except Exception:
             pass
+        try:
+            if self._lifecycle is not None:
+                self._lifecycle.__exit__(None, None, None)
+        except Exception:
+            pass
+        self._lifecycle = None
+        temp_dir = getattr(self, "_temp_profile_dir", None)
+        if temp_dir:
+            try:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            except Exception:
+                pass
+            self._temp_profile_dir = None
 
     def find_elements(self, by: Any, selector: str) -> list[CloakElement]:
         loc = self._locator(by, selector)
@@ -387,7 +403,7 @@ class CloakSeleniumDriver:
 
 
 def resolve_stealth_engine() -> str:
-    """返回当前本地指纹内核：cloakbrowser 或 chromix。"""
+    """返回当前本地指纹内核：cloakbrowser、chromix 或 camoufox。"""
     try:
         from config import roxybrowser as _roxy
         driver = str(getattr(_roxy, "REGISTRATION_DRIVER", "") or "").strip().lower()
@@ -395,16 +411,47 @@ def resolve_stealth_engine() -> str:
         driver = ""
     if driver in {"chromix"}:
         return "chromix"
+    if driver in {"camoufox"}:
+        return "camoufox"
     return "cloakbrowser"
 
 
 def stealth_log_tag() -> str:
-    return "Chromix" if resolve_stealth_engine() == "chromix" else "Cloak"
+    engine = resolve_stealth_engine()
+    if engine == "chromix":
+        return "Chromix"
+    if engine == "camoufox":
+        return "Camoufox"
+    return "Cloak"
+
+
+def stealth_keep_browser_open() -> bool:
+    if resolve_stealth_engine() == "camoufox":
+        from config import camoufox as _camoufox_cfg
+        return bool(getattr(_camoufox_cfg, "CAMOUFOX_KEEP_BROWSER_OPEN", False))
+    return bool(getattr(_cfg, "CLOAK_KEEP_BROWSER_OPEN", False))
+
+
+def stealth_selenium_timeout() -> int:
+    if resolve_stealth_engine() == "camoufox":
+        from config import camoufox as _camoufox_cfg
+        return int(getattr(_camoufox_cfg, "CAMOUFOX_SELENIUM_TIMEOUT", 90) or 90)
+    return int(getattr(_cfg, "CLOAK_SELENIUM_TIMEOUT", 90) or 90)
+
+
+def install_stealth_data_saver(data_saver: Any, driver: Any) -> None:
+    """Camoufox 是 Firefox，走 Playwright route；Cloak/Chromix 仍用 Chrome CDP。"""
+    if resolve_stealth_engine() == "camoufox":
+        data_saver.install_playwright(driver.context)
+        return
+    data_saver.install_selenium(driver)
 
 
 def import_stealth_browser() -> tuple[Any, Any, str]:
     """按当前注册驱动导入 CloakBrowser 或 Chromix 的 launch API。"""
     engine = resolve_stealth_engine()
+    if engine == "camoufox":
+        raise RuntimeError("Camoufox 请通过 build_camoufox_driver 启动，不要走 Cloak launch API")
     if engine == "chromix":
         try:
             from chromix import launch, launch_persistent_context
@@ -537,6 +584,9 @@ def build_cloak_driver(proxy: str | None = None) -> tuple[CloakSeleniumDriver, C
     proxy=""    时显式禁用代理；
     proxy="..." 时使用指定代理。
     """
+    if resolve_stealth_engine() == "camoufox":
+        from core.camoufox_driver import build_camoufox_driver
+        return build_camoufox_driver(proxy=proxy)
     if proxy is None and bool(getattr(_cfg, "CLOAK_USE_PROXY", True)):
         try:
             from config.proxy import pick_proxy

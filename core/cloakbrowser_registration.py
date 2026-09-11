@@ -7,12 +7,17 @@ import time
 from pathlib import Path
 from typing import Callable
 
-from config import cloakbrowser as _cfg
 from config import twofa as _twofa_cfg
 from core.account_export import save_account_data, post_register_dwell
 from core.browser_data_saver import BrowserDataSaver
 from core.browser_traffic import PlaywrightTrafficTracker
-from core.cloakbrowser_driver import build_cloak_driver, stealth_log_tag
+from core.cloakbrowser_driver import (
+    build_cloak_driver,
+    install_stealth_data_saver,
+    stealth_keep_browser_open,
+    stealth_log_tag,
+    stealth_selenium_timeout,
+)
 from core.email_provider import acquire_email_after_input, wait_for_otp, resolve_email_source
 from core.humanize import delay as human_delay
 
@@ -58,7 +63,8 @@ def run_cloak_registration(
             traffic_tracker.attach_data_saver(data_saver)
         # Cloak 的 HTTP 代理鉴权走 Playwright Fetch 拦截器；再叠加 context.route
         # 拦截所有请求时，chatgpt.com 导航可能一直不返回。省流量改用 CDP URL 拦截。
-        data_saver.install_selenium(driver)
+        # Camoufox 是 Firefox，没有 Chrome CDP，改走 Playwright route。
+        install_stealth_data_saver(data_saver, driver)
         logger.info("[%s注册] 开始：%s，profile=%s", tag, email, opened.profile_id)
 
         otp_after_ts = time.time()
@@ -66,7 +72,7 @@ def run_cloak_registration(
         _safe_get(
             driver,
             "https://chatgpt.com/auth/login",
-            timeout=min(45, int(getattr(_cfg, "CLOAK_SELENIUM_TIMEOUT", 90) or 90)),
+            timeout=min(45, stealth_selenium_timeout()),
             attempts=2,
             accept_hosts=("chatgpt.com", "auth.openai.com"),
         )
@@ -254,7 +260,7 @@ def run_cloak_registration(
                 pass
         if data_saver is not None:
             data_saver.stop()
-        if driver and not bool(_cfg.CLOAK_KEEP_BROWSER_OPEN):
+        if driver and not stealth_keep_browser_open():
             try:
                 logger.info("[%s注册] 正在关闭浏览器", tag)
                 driver.quit()

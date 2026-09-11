@@ -15,6 +15,7 @@ from config.env_loader import env_str, apply_env_overrides
 #   "roxy"         = 调用 RoxyBrowser 指纹浏览器 + Selenium 自动化注册
 #   "cloak"        = 调用 CloakBrowser + Playwright/Selenium 适配层注册
 #   "chromix"      = 调用 Chromix（Cloak 兼容 SDK；当前正式包仅 Windows x64）
+#   "camoufox"     = 调用 Camoufox（Firefox 反检测浏览器）+ Playwright 适配层
 #   "browser_use"  = Browser Use Cloud stealth Chromium + Playwright
 #   "skyvern"      = Skyvern Browser Sessions + Playwright
 REGISTRATION_DRIVER: str = "roxy"

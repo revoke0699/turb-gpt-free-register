@@ -183,6 +183,7 @@ def run_registration(
     #   roxy         = RoxyBrowser 指纹浏览器 + Selenium
     #   cloak        = CloakBrowser + Playwright/Selenium 适配层
     #   chromix      = Chromix（Cloak 兼容 SDK，当前正式包仅 Windows x64）
+    #   camoufox     = Camoufox（Firefox 反检测浏览器）+ Playwright 适配层
     #   browser_use  = Browser Use Cloud stealth Chromium + Playwright
     #   skyvern      = Skyvern Browser Sessions + Playwright
     driver_mode = str(getattr(_roxy_cfg, "REGISTRATION_DRIVER", "protocol") or "protocol").strip().lower()
@@ -197,7 +198,7 @@ def run_registration(
             batch_dir=batch_dir,
             on_email_acquired=on_email_acquired,
         )
-    if driver_mode in ("cloak", "cloakbrowser", "chromix"):
+    if driver_mode in ("cloak", "cloakbrowser", "chromix", "camoufox"):
         from core.cloakbrowser_registration import run_cloak_registration
         return run_cloak_registration(
             email=email,
@@ -232,7 +233,7 @@ def run_registration(
         )
     if driver_mode not in ("protocol", "api", "http"):
         raise RuntimeError(
-            f"不支持的 REGISTRATION_DRIVER={driver_mode!r}，可选 protocol / roxy / cloak / chromix / browser_use / skyvern"
+            f"不支持的 REGISTRATION_DRIVER={driver_mode!r}，可选 protocol / roxy / cloak / chromix / camoufox / browser_use / skyvern"
         )
 
     # 纯协议驱动没有“邮箱输入框”可等待，因此在创建 BrowserSession 前领取。

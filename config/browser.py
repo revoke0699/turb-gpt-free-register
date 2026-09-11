@@ -85,7 +85,7 @@ CLOUD_PROXY_ORG_KEYWORDS = [
 # 默认关闭。开启后只拦截可选的图片/媒体，以及下面明确列出的统计/第三方 URL；
 # 不拦截登录所需的 document、核心 script、stylesheet、xhr/fetch、websocket；
 # Playwright 会放行带验证码/challenge 关键词的 URL。
-# 该模式仅应用于 Roxy/Cloak，本地浏览器才需要节省带宽；Browser Use/Skyvern 云端
+# 该模式仅应用于 Roxy/Cloak/Camoufox，本地浏览器才需要节省带宽；Browser Use/Skyvern 云端
 # 浏览器不会安装省流量拦截器。Selenium/CDP 只能按 URL 后缀拦截，若验证码异常可关闭。
 BROWSER_DATA_SAVER_MODE: bool = False
 # 每行一个 Playwright resource_type。可选 image/media/font/manifest/texttrack 等；
@@ -97,7 +97,7 @@ BROWSER_DATA_SAVER_BLOCKED_RESOURCE_TYPES: list[str] = ["image", "media"]
 # 不要把 ChatGPT/auth.openai 的 CDN chunk 当作候选：即使某个 chunk 只有少量函数
 # 被调用，也可能负责路由、表单切换或懒加载；需经过单变量 A/B 验证后才能加入规则。
 # 不要把 chatgpt/openai 的核心 API 或 sentinel URL 加到这里。
-# `**` 用于匹配 URL 中的任意路径；Roxy/Cloak 的 Playwright/Selenium 会读取这组规则。
+# `**` 用于匹配 URL 中的任意路径；Roxy/Cloak/Camoufox 的 Playwright/Selenium 会读取这组规则。
 BROWSER_DATA_SAVER_BLOCKED_URL_PATTERNS: list[str] = [
     "**://auth.openai.com/awe/api/v2/rum**",
     "**://chatgpt.com/ces/statsc/flush**",

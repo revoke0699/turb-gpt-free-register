@@ -89,9 +89,8 @@ class CloakLoginNavigationTests(unittest.TestCase):
     def test_cloak_registration_opens_login_page_with_safe_get_and_cdp_data_saver(self):
         src = Path("core/cloakbrowser_registration.py").read_text(encoding="utf-8")
         self.assertIn("_safe_get(", src)
-        self.assertIn("install_selenium(driver)", src)
+        self.assertIn("install_stealth_data_saver(data_saver, driver)", src)
         self.assertNotIn('driver.get("https://chatgpt.com/auth/login")', src)
-        self.assertNotIn("install_playwright(driver.context)", src)
         self.assertIn("结束流量统计失败，继续保存账号", src)
 
 

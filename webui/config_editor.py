@@ -49,7 +49,7 @@ EDITABLE_FIELDS = [
     },
     {
         "key": "REGISTRATION_DRIVER", "file": "roxybrowser.py", "type": "str", "group": "注册方式",
-        "label": "注册驱动", "help": "默认推荐 roxy；protocol=纯协议，容易封号不建议；roxy=RoxyBrowser；cloak=CloakBrowser；chromix=Chromix（Windows x64）；browser_use=Browser Use Cloud+Playwright；skyvern=Skyvern Browser Sessions+Playwright",
+        "label": "注册驱动", "help": "默认推荐 roxy；protocol=纯协议，容易封号不建议；roxy=RoxyBrowser；cloak=CloakBrowser；chromix=Chromix（Windows x64）；camoufox=Camoufox（Firefox）；browser_use=Browser Use Cloud+Playwright；skyvern=Skyvern Browser Sessions+Playwright",
     },
     {
         "key": "AUTO_PLAN_CHECK_AFTER_REGISTER", "file": "register.py", "type": "bool", "group": "注册方式",
@@ -100,6 +100,52 @@ EDITABLE_FIELDS = [
     {
         "key": "CLOAK_KEEP_BROWSER_OPEN", "file": "cloakbrowser.py", "type": "bool", "group": "CloakBrowser",
         "label": "保留Cloak浏览器", "help": "调试时开启，任务结束后不自动关闭",
+    },
+
+    # ---- Camoufox ----
+    {
+        "key": "CAMOUFOX_HEADLESS", "file": "camoufox.py", "type": "bool", "group": "Camoufox",
+        "label": "Camoufox无头", "help": "True=无头运行；False=显示浏览器窗口",
+    },
+    {
+        "key": "CAMOUFOX_HUMANIZE", "file": "camoufox.py", "type": "bool", "group": "Camoufox",
+        "label": "Camoufox人工行为", "help": "启用 Camoufox humanize 鼠标轨迹",
+    },
+    {
+        "key": "CAMOUFOX_GEOIP", "file": "camoufox.py", "type": "bool", "group": "Camoufox",
+        "label": "Camoufox按出口定位", "help": "按当前出口 IP 自动匹配时区/经纬度；支持显式代理、系统代理/VPN",
+    },
+    {
+        "key": "CAMOUFOX_LOCALE", "file": "camoufox.py", "type": "str", "group": "Camoufox",
+        "label": "Camoufox语言", "help": "留空自动；日本可填 ja-JP，美国 en-US",
+    },
+    {
+        "key": "CAMOUFOX_TIMEZONE", "file": "camoufox.py", "type": "str", "group": "Camoufox",
+        "label": "Camoufox时区", "help": "留空自动；日本可填 Asia/Tokyo，美国 America/Los_Angeles",
+    },
+    {
+        "key": "CAMOUFOX_USE_PROXY", "file": "camoufox.py", "type": "bool", "group": "Camoufox",
+        "label": "Camoufox使用代理", "help": "把本项目传入或代理池抽取的代理传给 Camoufox",
+    },
+    {
+        "key": "CAMOUFOX_BLOCK_WEBRTC", "file": "camoufox.py", "type": "bool", "group": "Camoufox",
+        "label": "Camoufox阻止WebRTC", "help": "防止 STUN 泄漏真实 IP；建议保持开启",
+    },
+    {
+        "key": "CAMOUFOX_OS", "file": "camoufox.py", "type": "str", "group": "Camoufox",
+        "label": "Camoufox系统指纹", "help": "留空随机；可填 windows / macos / linux",
+    },
+    {
+        "key": "CAMOUFOX_USER_DATA_DIR", "file": "camoufox.py", "type": "str", "group": "Camoufox",
+        "label": "Camoufox用户目录", "help": "留空每次临时 profile；填写路径则持久化 cookies/cache",
+    },
+    {
+        "key": "CAMOUFOX_SELENIUM_TIMEOUT", "file": "camoufox.py", "type": "int", "group": "Camoufox",
+        "label": "Camoufox超时", "help": "页面和元素等待超时时间，秒",
+    },
+    {
+        "key": "CAMOUFOX_KEEP_BROWSER_OPEN", "file": "camoufox.py", "type": "bool", "group": "Camoufox",
+        "label": "保留Camoufox浏览器", "help": "调试时开启，任务结束后不自动关闭",
     },
 
     # ---- Browser Use Cloud ----
@@ -270,7 +316,7 @@ EDITABLE_FIELDS = [
     },
     {
         "key": "CODEX_OAUTH_DRIVER", "file": "codex.py", "type": "str", "group": "Codex",
-        "label": "Codex授权驱动", "help": "默认推荐 roxy；protocol=原协议授权；roxy=用 RoxyBrowser；cloak=用 CloakBrowser；browser_use=用 Browser Use Cloud；skyvern=用 Skyvern；same_as_registration=跟随注册驱动",
+        "label": "Codex授权驱动", "help": "默认推荐 roxy；protocol=原协议授权；roxy=用 RoxyBrowser；cloak=用 CloakBrowser；chromix=用 Chromix；camoufox=用 Camoufox；browser_use=用 Browser Use Cloud；skyvern=用 Skyvern；same_as_registration=跟随注册驱动",
     },
     {
         "key": "ROXY_CODEX_CALLBACK_TIMEOUT", "file": "roxybrowser.py", "type": "int", "group": "RoxyBrowser",
