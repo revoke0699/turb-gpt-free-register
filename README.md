@@ -200,6 +200,50 @@ docker compose up --build
 
 `turb.sqlite3` 和 `注册日志/` 仍写在当前目录。镜像构建时会预拉 Cloak Chromium 和 Camoufox Firefox。需要 `shm_size=2gb`（compose 已配置）。建议至少 8GB 内存。
 
+#### 可选 sidecar：Resin + chatgpt2api
+
+同一份 `docker-compose.yml` 还集成了：
+
+- [Resin](https://github.com/Resinat/Resin)：粘性代理网关，镜像 `ghcr.io/resinat/resin:latest`
+- [chatgpt2api](https://github.com/revoke0699/chatgpt2api)：ChatGPT 号池 / OpenAI 兼容 API，镜像 `ghcr.io/yukkcat/chatgpt2api:latest`
+
+默认不随 WebUI 启动。启用前在 `.env` 填写：
+
+```dotenv
+COMPOSE_PROFILES=resin,chatgpt2api
+CHATGPT2API_AUTH_KEY=你的私有密钥
+RESIN_ADMIN_TOKEN=管理台密码
+RESIN_PROXY_TOKEN=代理密码
+```
+
+然后：
+
+```bash
+docker compose up --build
+# 等价：docker compose --profile resin --profile chatgpt2api up --build
+```
+
+| 服务 | 地址 |
+| --- | --- |
+| Resin 管理台 / 代理入口 | `http://127.0.0.1:2260` |
+| chatgpt2api 控制台 | `http://127.0.0.1:3000` |
+| chatgpt2api OpenAI 兼容 API | `http://127.0.0.1:3000/v1` |
+
+WebUI 容器访问 chatgpt2api 默认走 Docker 内网 `http://chatgpt2api`（容器内端口 80）。若在宿主机直接跑 `python web.py`，把 `CHATGPT2API_API_BASE` 设为 `http://127.0.0.1:3000`。
+
+要用本机 Resin 做粘性代理，把 `PROXY_RESIN_MODE=True`，模板按运行位置二选一：
+
+```dotenv
+# WebUI 也在 compose 里
+PROXY_RESIN_TEMPLATE=http://openai.[task_任务id]:你的RESIN_PROXY_TOKEN@resin:2260
+# 只把 Resin 放进 Docker、WebUI 跑在宿主机
+PROXY_RESIN_TEMPLATE=http://openai.[task_任务id]:你的RESIN_PROXY_TOKEN@127.0.0.1:2260
+```
+
+首次打开 Resin 管理台后，在「订阅管理」里导入你的代理订阅，节点就绪后模板才会真正出网。chatgpt2api 控制台如需走同一套出口，可把代理指到 `http://resin:2260`（认证格式 `平台.账号:RESIN_PROXY_TOKEN`）。
+
+运行数据在 Docker 命名卷：`resin_cache` / `resin_state` / `resin_log`、`chatgpt2api-data`、`chatgpt2api-runtime`。日常停止用 `docker compose down`，不要加 `-v`，否则会删掉这些卷。
+
 ### 密钥配置（.env）
 
 重要 API Key 请放在项目根目录 `.env`，不要写进 `config/*.py`。
@@ -225,6 +269,8 @@ cp .env.example .env
 - `SMS_API_KEY`
 - `L_ADMIN_AUTH_CODE`
 - `H_ADMIN_AUTH_CODE`
+- `CHATGPT2API_AUTH_KEY`
+- `RESIN_ADMIN_TOKEN` / `RESIN_PROXY_TOKEN`
 
 WebUI 配置页保存这些字段时会写入 `.env`（不是 config 源码）。
 
