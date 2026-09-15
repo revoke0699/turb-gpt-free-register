@@ -721,12 +721,23 @@ def _submit_email_form_stable(driver, email: str) -> dict:
     """第一次提交就按“补交成功”的方式执行：稳定 value 后 Enter + DOM click。"""
     page = getattr(driver, "page", None)
     if page is not None:
-        # grok-register 用 locator.click；Camoufox 上 execute_script + setTimeout(click)
-        # 会在导航开始时把标签页打崩。
+        # force=True 在 Firefox 上可能点到按钮却不触发 React submit（URL 一直没有 email=）。
+        # 先 Enter 再普通 click；不要用 JS setTimeout(click)，那会打崩标签页。
         try:
+            email_box = page.locator('input[type="email"], input[name="email"]').first
+            try:
+                email_box.press("Enter")
+            except Exception:
+                pass
             submit = page.locator('form button[type="submit"], form input[type="submit"]').first
-            submit.click(timeout=8000, force=True, no_wait_after=True)
-            return {"ok": True, "reason": "playwright_locator_click", "url": getattr(page, "url", "")}
+            submit.click(timeout=8000, no_wait_after=True)
+            deadline = time.time() + 2.5
+            while time.time() < deadline:
+                url = str(getattr(page, "url", "") or "")
+                if "email=" in url:
+                    return {"ok": True, "reason": "playwright_enter_click", "url": url}
+                time.sleep(0.2)
+            return {"ok": True, "reason": "playwright_enter_click", "url": str(getattr(page, "url", "") or "")}
         except Exception as exc:
             return {"ok": False, "reason": f"{type(exc).__name__}: {exc}"}
     try:
@@ -1158,6 +1169,15 @@ def _submit_email_and_wait_next(
             return state_name
         if state_name == "unknown":
             logger.warning("%s 邮箱提交后页面已关闭，停止重填", _log_prefix(driver))
+            break
+        stuck_url = ""
+        try:
+            stuck_url = str(getattr(getattr(driver, "page", None), "url", "") or getattr(driver, "current_url", "") or "")
+        except Exception:
+            stuck_url = ""
+        if "/auth/login" in stuck_url and "email=" in stuck_url:
+            logger.warning("%s 已停在 login?email= 中间页，不再反复重填：url=%s", _log_prefix(driver), stuck_url[:180])
+            last_state = last_state or {"url": stuck_url}
             break
         logger.warning("%s 邮箱提交后仍未进入下一步：%s，准备重填重试", _log_prefix(driver), state_name)
         time.sleep(1.0)
