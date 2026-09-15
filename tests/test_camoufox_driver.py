@@ -124,6 +124,26 @@ class CamoufoxDriverTests(unittest.TestCase):
         self.assertNotIn("os", opts)
         self.assertNotIn("firefox_user_prefs", opts)
 
+    def test_create_camoufox_options_passes_executable_path_like_grok_register(self):
+        from core.camoufox_driver import create_camoufox_options
+        with patch("core.camoufox_driver.tempfile.mkdtemp", return_value="/tmp/turb-camoufox-exe"), \
+             patch("core.camoufox_driver._detect_camoufox_exe", return_value="/root/.cache/camoufox/camoufox-bin"), \
+             patch("core.camoufox_driver._detect_ff_version", return_value="152"), \
+             patch("core.camoufox_driver._cfg") as cfg:
+            cfg.CAMOUFOX_HEADLESS = False
+            cfg.CAMOUFOX_HUMANIZE = True
+            cfg.CAMOUFOX_GEOIP = False
+            cfg.CAMOUFOX_BLOCK_WEBRTC = True
+            cfg.CAMOUFOX_LOCALE = "en-US"
+            cfg.CAMOUFOX_TIMEZONE = ""
+            cfg.CAMOUFOX_USE_PROXY = False
+            cfg.CAMOUFOX_OS = ""
+            cfg.CAMOUFOX_USER_DATA_DIR = ""
+            cfg.CAMOUFOX_SELENIUM_TIMEOUT = 90
+            opts = create_camoufox_options(proxy="")
+        self.assertEqual(opts["executable_path"], "/root/.cache/camoufox/camoufox-bin")
+        self.assertEqual(opts["ff_version"], "152")
+
     def test_create_camoufox_options_excludes_default_addons_like_grok_register(self):
         from core.camoufox_driver import create_camoufox_options
         with patch("core.camoufox_driver.tempfile.mkdtemp", return_value="/tmp/turb-camoufox-addons"), \

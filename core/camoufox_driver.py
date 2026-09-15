@@ -27,61 +27,51 @@ def import_camoufox():
     return Camoufox
 
 
-def _isolate_camoufox_class(camoufox_cls):
-    """grok-register IsolatedCamoufox：线程里避开 Sync API inside asyncio loop。"""
-    if not str(getattr(camoufox_cls, "__module__", "")).startswith("camoufox"):
-        return camoufox_cls
+def _detect_camoufox_exe() -> str:
+    """grok-register 同款：新格式走 launch_path，旧格式/config 缺失时扫 browsers/。"""
     try:
-        import asyncio
-        from greenlet import greenlet
-        from typing import cast as _tcast
-        from camoufox.sync_api import NewBrowser
-        from playwright._impl._connection import Connection as _PwConnection
-        from playwright._impl._greenlets import MainGreenlet as _PwMainGreenlet
-        from playwright._impl._object_factory import create_remote_object as _pw_create_remote
-        from playwright._impl._playwright import Playwright as _PwImpl
-        from playwright._impl._transport import PipeTransport as _PwPipeTransport
-        from playwright.sync_api._generated import Playwright as _SyncPlaywright
-    except Exception as exc:
-        logger.debug("[Camoufox] 无法启用隔离事件循环，继续用默认 Camoufox：%s", exc)
-        return camoufox_cls
+        from camoufox.pkgman import INSTALL_DIR, LAUNCH_FILE, OS_NAME, launch_path
+    except Exception:
+        return ""
+    exe_name = LAUNCH_FILE.get(OS_NAME, "camoufox-bin")
+    try:
+        return str(launch_path() or "")
+    except Exception:
+        pass
+    legacy = INSTALL_DIR / exe_name
+    if legacy.exists():
+        return str(legacy)
+    browsers = INSTALL_DIR / "browsers"
+    if browsers.exists():
+        matches = sorted(browsers.rglob(exe_name))
+        if matches:
+            return str(matches[-1])
+    return ""
 
-    class IsolatedCamoufox(camoufox_cls):
-        def __enter__(self):
-            self._loop = asyncio.new_event_loop()
-            self._own_loop = True
 
-            def _greenlet_main():
-                self._loop.run_until_complete(self._connection.run_as_sync())
-
-            dispatcher_fiber = _PwMainGreenlet(_greenlet_main)
-            self._connection = _PwConnection(
-                dispatcher_fiber,
-                _pw_create_remote,
-                _PwPipeTransport(self._loop),
-                self._loop,
-            )
-            g_self = greenlet.getcurrent()
-
-            def _callback_wrapper(channel_owner):
-                playwright_impl = _tcast(_PwImpl, channel_owner)
-                self._playwright = _SyncPlaywright(playwright_impl)
-                g_self.switch()
-
-            self._connection.call_on_object_with_known_name("Playwright", _callback_wrapper)
-            dispatcher_fiber.switch()
-            playwright = self._playwright
-            playwright.stop = self.__exit__
-            try:
-                self.browser = NewBrowser(self._playwright, **self.launch_options)
-            except BaseException as exc:
-                super().__exit__(type(exc), exc, exc.__traceback__)
-                raise
-            return self.browser
-
-    IsolatedCamoufox.__name__ = "IsolatedCamoufox"
-    IsolatedCamoufox.__qualname__ = "IsolatedCamoufox"
-    return IsolatedCamoufox
+def _detect_ff_version() -> str:
+    """从已安装 version.json 读主版本，避免 launch_options 再查 official/stable。"""
+    try:
+        import json
+        from pathlib import Path
+        from camoufox.pkgman import INSTALL_DIR
+    except Exception:
+        return ""
+    candidates = [INSTALL_DIR / "version.json"]
+    browsers = INSTALL_DIR / "browsers"
+    if browsers.exists():
+        candidates.extend(sorted(browsers.rglob("version.json")))
+    for version_file in candidates:
+        if not version_file.is_file():
+            continue
+        try:
+            data = json.loads(version_file.read_text(encoding="utf-8"))
+            major = str(data.get("version") or "").split(".", 1)[0]
+            if major.isdigit():
+                return major
+        except Exception:
+            continue
+    return ""
 
 
 def adapt_camoufox_proxy(proxy: str | None) -> dict | None:
@@ -166,6 +156,13 @@ def create_camoufox_options(proxy: str | None = None) -> dict:
     os_name = str(getattr(_cfg, "CAMOUFOX_OS", "") or "").strip().lower()
     if os_name in {"windows", "macos", "linux"}:
         opts["os"] = os_name
+    exe_path = _detect_camoufox_exe()
+    if exe_path:
+        opts["executable_path"] = exe_path
+    ff_version = _detect_ff_version()
+    if ff_version:
+        # 与当前 binary 一致；不传的话 Camoufox 0.5 会去读 official/stable，config 异常就报未安装。
+        opts["ff_version"] = ff_version
     proxy_dict = adapt_camoufox_proxy(proxy)
     if proxy_dict:
         opts["proxy"] = proxy_dict
@@ -204,15 +201,17 @@ def build_camoufox_driver(proxy: str | None = None) -> tuple[CloakSeleniumDriver
     if forwarder is not None:
         logger.info("[Camoufox] HTTP 代理账密改为本地转发：%s -> %s", (opts.get("proxy") or {}).get("server") or proxy_url, forwarder.local_url)
         opts["proxy"] = {"server": forwarder.local_url}
-    camoufox_cls = _isolate_camoufox_class(import_camoufox())
+    camoufox_cls = import_camoufox()
     instance = camoufox_cls(**opts)
     logger.info(
-        "[Camoufox] 启动 Camoufox：headless=%s humanize=%s geoip=%s proxy=%s locale=%s timezone=%s persistent=%s",
+        "[Camoufox] 启动 Camoufox：headless=%s humanize=%s geoip=%s proxy=%s locale=%s timezone=%s persistent=%s exe=%s ff=%s",
         opts.get("headless"), opts.get("humanize"), opts.get("geoip"),
         (opts.get("proxy") or {}).get("server") or "无",
         opts.get("locale") or "自动/默认",
         (opts.get("config") or {}).get("timezone") or "自动/默认",
         bool(opts.get("user_data_dir")),
+        opts.get("executable_path") or "自动",
+        opts.get("ff_version") or "自动",
     )
     try:
         browser_or_ctx = instance.__enter__()
