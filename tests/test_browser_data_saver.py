@@ -30,13 +30,17 @@ class _Context:
         self.route_pattern = None
         self.handler = None
         self.unroute_args = None
+        self.routes = []
+        self.unroutes = []
 
     def route(self, pattern, handler):
         self.route_pattern = pattern
         self.handler = handler
+        self.routes.append((pattern, handler))
 
     def unroute(self, pattern, handler):
         self.unroute_args = (pattern, handler)
+        self.unroutes.append((pattern, handler))
 
 
 class _Driver:
@@ -58,6 +62,34 @@ class BrowserDataSaverTests(unittest.TestCase):
         self.assertFalse(saver.enabled)
         self.assertIsNone(context.handler)
         self.assertEqual(saver.snapshot()["data_saver_blocked_count"], 0)
+
+    def test_playwright_catch_all_false_does_not_intercept_documents(self):
+        """Camoufox 不能拦 document：全量 route.continue_ 会让后续导航丢掉代理鉴权并 407 崩溃。"""
+        context = _Context()
+        with patch("core.browser_data_saver._cfg.BROWSER_DATA_SAVER_MODE", True), patch(
+            "core.browser_data_saver._cfg.BROWSER_DATA_SAVER_BLOCKED_RESOURCE_TYPES",
+            ["image", "media"],
+        ), patch(
+            "core.browser_data_saver._cfg.BROWSER_DATA_SAVER_BLOCKED_URL_PATTERNS",
+            ["**://chatgpt.com/ces/statsc/flush**"],
+        ):
+            saver = BrowserDataSaver(label="camoufox")
+            saver.install_playwright(context, catch_all=False)
+
+        patterns = [pattern for pattern, _ in context.routes]
+        self.assertNotIn("**/*", patterns)
+        self.assertIn("**://chatgpt.com/ces/statsc/flush**", patterns)
+        self.assertTrue(any(pattern.endswith(".mp4*") or "*.mp4" in pattern for pattern in patterns))
+        self.assertFalse(any(pattern.endswith(".png*") or "*.png" in pattern for pattern in patterns))
+
+        handler = context.routes[0][1]
+        telemetry = _Route(_Request("xhr", "https://chatgpt.com/ces/statsc/flush"))
+        handler(telemetry)
+        self.assertEqual(telemetry.action, "abort")
+
+        saver.stop()
+        unrouted = [pattern for pattern, _ in context.unroutes]
+        self.assertEqual(set(unrouted), set(patterns))
 
     def test_playwright_blocks_optional_types_but_keeps_critical_requests(self):
         context = _Context()

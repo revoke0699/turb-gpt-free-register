@@ -63,7 +63,8 @@ def run_cloak_registration(
             traffic_tracker.attach_data_saver(data_saver)
         # Cloak 的 HTTP 代理鉴权走 Playwright Fetch 拦截器；再叠加 context.route
         # 拦截所有请求时，chatgpt.com 导航可能一直不返回。省流量改用 CDP URL 拦截。
-        # Camoufox 是 Firefox，没有 Chrome CDP，改走 Playwright route。
+        # Camoufox 是 Firefox，没有 Chrome CDP；全量 route 会让邮箱提交后的 document
+        # 导航丢掉代理鉴权（407）并崩溃，因此只拦 URL 规则/媒体后缀，图片走原生 block_images。
         install_stealth_data_saver(data_saver, driver)
         logger.info("[%s注册] 开始：%s，profile=%s", tag, email, opened.profile_id)
 

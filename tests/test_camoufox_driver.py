@@ -73,8 +73,28 @@ class CamoufoxDriverTests(unittest.TestCase):
         driver.context = object()
         with patch("core.cloakbrowser_driver.resolve_stealth_engine", return_value="camoufox"):
             install_stealth_data_saver(saver, driver)
-        saver.install_playwright.assert_called_once_with(driver.context)
+        saver.install_playwright.assert_called_once_with(driver.context, catch_all=False)
         saver.install_selenium.assert_not_called()
+
+    def test_create_camoufox_options_avoids_catch_all_proxy_crash(self):
+        from core.camoufox_driver import create_camoufox_options
+        with patch("core.camoufox_driver.tempfile.mkdtemp", return_value="/tmp/turb-camoufox-test"), \
+             patch("core.camoufox_driver._cfg") as cfg, \
+             patch("core.browser_data_saver._cfg.BROWSER_DATA_SAVER_MODE", True), \
+             patch("core.browser_data_saver._cfg.BROWSER_DATA_SAVER_BLOCKED_RESOURCE_TYPES", ["image", "media"]):
+            cfg.CAMOUFOX_HEADLESS = False
+            cfg.CAMOUFOX_HUMANIZE = True
+            cfg.CAMOUFOX_GEOIP = True
+            cfg.CAMOUFOX_BLOCK_WEBRTC = True
+            cfg.CAMOUFOX_LOCALE = "en-US"
+            cfg.CAMOUFOX_TIMEZONE = ""
+            cfg.CAMOUFOX_USE_PROXY = True
+            cfg.CAMOUFOX_OS = ""
+            cfg.CAMOUFOX_USER_DATA_DIR = ""
+            cfg.CAMOUFOX_SELENIUM_TIMEOUT = 90
+            opts = create_camoufox_options(proxy="http://u:p@127.0.0.1:7890")
+        self.assertTrue(opts["block_images"])
+        self.assertNotIn("disable_coop", opts)
 
     def test_cloak_data_saver_still_uses_selenium_cdp(self):
         from core.cloakbrowser_driver import install_stealth_data_saver
@@ -84,6 +104,49 @@ class CamoufoxDriverTests(unittest.TestCase):
             install_stealth_data_saver(saver, driver)
         saver.install_selenium.assert_called_once_with(driver)
         saver.install_playwright.assert_not_called()
+
+    def test_create_camoufox_options_does_not_override_camoufox_webgl_in_docker(self):
+        """grok-register 不钉 os、不加 software webrender，避免和 Camoufox WebGL 指纹打架。"""
+        from core.camoufox_driver import create_camoufox_options
+        with patch("core.camoufox_driver.tempfile.mkdtemp", return_value="/tmp/turb-camoufox-docker"), \
+             patch("core.camoufox_driver._cfg") as cfg:
+            cfg.CAMOUFOX_HEADLESS = False
+            cfg.CAMOUFOX_HUMANIZE = True
+            cfg.CAMOUFOX_GEOIP = False
+            cfg.CAMOUFOX_BLOCK_WEBRTC = True
+            cfg.CAMOUFOX_LOCALE = "en-US"
+            cfg.CAMOUFOX_TIMEZONE = ""
+            cfg.CAMOUFOX_USE_PROXY = False
+            cfg.CAMOUFOX_OS = ""
+            cfg.CAMOUFOX_USER_DATA_DIR = ""
+            cfg.CAMOUFOX_SELENIUM_TIMEOUT = 90
+            opts = create_camoufox_options(proxy="")
+        self.assertNotIn("os", opts)
+        self.assertNotIn("firefox_user_prefs", opts)
+
+    def test_create_camoufox_options_excludes_default_addons_like_grok_register(self):
+        from core.camoufox_driver import create_camoufox_options
+        with patch("core.camoufox_driver.tempfile.mkdtemp", return_value="/tmp/turb-camoufox-addons"), \
+             patch("core.camoufox_driver._excluded_default_addons", return_value=["UBO"]), \
+             patch("core.camoufox_driver._cfg") as cfg:
+            cfg.CAMOUFOX_HEADLESS = False
+            cfg.CAMOUFOX_HUMANIZE = True
+            cfg.CAMOUFOX_GEOIP = False
+            cfg.CAMOUFOX_BLOCK_WEBRTC = True
+            cfg.CAMOUFOX_LOCALE = "en-US"
+            cfg.CAMOUFOX_TIMEZONE = ""
+            cfg.CAMOUFOX_USE_PROXY = False
+            cfg.CAMOUFOX_OS = ""
+            cfg.CAMOUFOX_USER_DATA_DIR = ""
+            cfg.CAMOUFOX_SELENIUM_TIMEOUT = 90
+            opts = create_camoufox_options(proxy="")
+        self.assertEqual(opts["exclude_addons"], ["UBO"])
+
+    def test_docker_compose_disables_seccomp_for_firefox_tabs(self):
+        """grok-register 用 seccomp=unconfined，否则 Firefox 内容进程会变成 Gah. Your tab just crashed。"""
+        from pathlib import Path
+        compose = Path("docker-compose.yml").read_text(encoding="utf-8")
+        self.assertIn("seccomp=unconfined", compose)
 
     def test_adapt_camoufox_proxy_builds_playwright_dict(self):
         from core.camoufox_driver import adapt_camoufox_proxy
@@ -188,6 +251,69 @@ class CamoufoxDriverTests(unittest.TestCase):
         self.assertEqual(driver._registration_log_prefix, "[Camoufox注册]")
         driver.quit()
         self.assertTrue(FakeCamoufox.last_instance.exited)
+
+    def test_build_camoufox_driver_forwards_http_proxy_auth_locally(self):
+        from core.camoufox_driver import build_camoufox_driver
+
+        class FakePage:
+            def set_default_navigation_timeout(self, ms):
+                self.nav_timeout = ms
+
+            def set_default_timeout(self, ms):
+                self.timeout = ms
+
+        class FakeContext:
+            def __init__(self):
+                self.pages = []
+
+            def new_page(self):
+                page = FakePage()
+                self.pages.append(page)
+                return page
+
+            def close(self):
+                self.closed = True
+
+        class FakeCamoufox:
+            last_opts = None
+            last_instance = None
+
+            def __init__(self, **opts):
+                FakeCamoufox.last_opts = opts
+                FakeCamoufox.last_instance = self
+
+            def __enter__(self):
+                self.context = FakeContext()
+                return self.context
+
+            def __exit__(self, *args):
+                self.exited = True
+
+        with patch("core.camoufox_driver.import_camoufox", return_value=FakeCamoufox), \
+             patch("core.camoufox_driver.tempfile.mkdtemp", return_value="/tmp/turb-camoufox-fwd"), \
+             patch("core.camoufox_driver._infer_locale", return_value="en-US"), \
+             patch("core.camoufox_driver._cfg") as cfg:
+            cfg.CAMOUFOX_HEADLESS = False
+            cfg.CAMOUFOX_HUMANIZE = False
+            cfg.CAMOUFOX_GEOIP = False
+            cfg.CAMOUFOX_BLOCK_WEBRTC = True
+            cfg.CAMOUFOX_LOCALE = "en-US"
+            cfg.CAMOUFOX_TIMEZONE = ""
+            cfg.CAMOUFOX_USE_PROXY = True
+            cfg.CAMOUFOX_OS = ""
+            cfg.CAMOUFOX_USER_DATA_DIR = ""
+            cfg.CAMOUFOX_SELENIUM_TIMEOUT = 90
+            driver, opened = build_camoufox_driver(proxy="http://openai.9:secret@8.222.186.217:2260")
+        try:
+            proxy = FakeCamoufox.last_opts["proxy"]
+            self.assertNotIn("username", proxy)
+            self.assertNotIn("password", proxy)
+            self.assertTrue(str(proxy["server"]).startswith("http://127.0.0.1:"))
+            self.assertIsNotNone(getattr(driver, "_proxy_forwarder", None))
+            self.assertEqual(opened.raw["proxy"], "http://openai.9:secret@8.222.186.217:2260")
+        finally:
+            driver.quit()
+        self.assertIsNone(getattr(driver, "_proxy_forwarder", None))
 
     def test_build_cloak_driver_dispatches_camoufox(self):
         sentinel = (object(), object())

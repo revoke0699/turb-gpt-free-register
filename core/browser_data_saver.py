@@ -144,6 +144,7 @@ class BrowserDataSaver:
         self._context: Any | None = None
         self._driver: Any | None = None
         self._route_handler: Any | None = None
+        self._route_patterns: list[str] = []
         self._blocked_playwright_requests: set[int] = set()
         self._selenium_patterns: list[str] = []
         self._installed = False
@@ -200,12 +201,34 @@ class BrowserDataSaver:
             self._blocked_playwright_requests.remove(key)
             return True
 
-    def install_playwright(self, context: Any) -> "BrowserDataSaver":
+    def _playwright_route_patterns(self, *, catch_all: bool) -> list[str]:
+        """全量 **/* 会拦 document；Firefox 后续导航可能丢掉代理鉴权并 407 崩溃。"""
+        if catch_all:
+            return ["**/*"]
+        patterns = list(self.url_patterns)
+        for resource_type in self.resource_types:
+            if resource_type == "image":
+                # Camoufox 用原生 block_images，避免再拦图片 URL。
+                continue
+            for extension in _URL_EXTENSIONS_BY_TYPE.get(resource_type, ()):
+                patterns.append(f"**/*{extension}*")
+        return list(dict.fromkeys(patterns))
+
+    def install_playwright(self, context: Any, *, catch_all: bool = True) -> "BrowserDataSaver":
         """在 BrowserContext 上按 resource_type 拦截请求。"""
         if not self.enabled:
             return self
         if not self.resource_types and not self.url_patterns:
             logger.info("[%s] 省流量模式已开启，但未配置可拦截资源类型或 URL 规则", self.label)
+            return self
+        patterns = self._playwright_route_patterns(catch_all=catch_all)
+        if not patterns:
+            logger.info(
+                "[%s] 省流量模式已启用：不拦截 document，图片交给浏览器原生拦截，URL规则=%s",
+                self.label,
+                len(self.url_patterns),
+            )
+            self.method = "native.block_images"
             return self
         try:
             def _handle_route(route: Any) -> None:
@@ -234,16 +257,19 @@ class BrowserDataSaver:
                     except Exception:
                         pass
 
-            context.route("**/*", _handle_route)
+            for pattern in patterns:
+                context.route(pattern, _handle_route)
             self._context = context
             self._route_handler = _handle_route
+            self._route_patterns = patterns
             self._installed = True
             self.method = "playwright.context.route"
             logger.info(
-                "[%s] 省流量模式已启用：拦截资源类型=%s，URL规则=%s（验证码/challenge 相关 URL 放行）",
+                "[%s] 省流量模式已启用：拦截资源类型=%s，URL规则=%s，路由=%s（验证码/challenge 相关 URL 放行）",
                 self.label,
                 ",".join(self.resource_types) or "-",
                 len(self.url_patterns),
+                "全量" if catch_all else "不含document",
             )
         except Exception as exc:
             logger.warning("[%s] 安装 Playwright 省流量拦截失败，继续不拦截：%s: %s", self.label, type(exc).__name__, exc)
@@ -330,11 +356,14 @@ class BrowserDataSaver:
             return
         self._stopped = True
         if self._context is not None and self._route_handler is not None:
-            try:
-                self._context.unroute("**/*", self._route_handler)
-            except Exception:
-                pass
+            patterns = self._route_patterns or ["**/*"]
+            for pattern in patterns:
+                try:
+                    self._context.unroute(pattern, self._route_handler)
+                except Exception:
+                    pass
         self._route_handler = None
+        self._route_patterns = []
         self._context = None
         self._driver = None
         self._blocked_playwright_requests.clear()

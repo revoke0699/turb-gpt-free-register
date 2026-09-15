@@ -27,6 +27,63 @@ def import_camoufox():
     return Camoufox
 
 
+def _isolate_camoufox_class(camoufox_cls):
+    """grok-register IsolatedCamoufox：线程里避开 Sync API inside asyncio loop。"""
+    if not str(getattr(camoufox_cls, "__module__", "")).startswith("camoufox"):
+        return camoufox_cls
+    try:
+        import asyncio
+        from greenlet import greenlet
+        from typing import cast as _tcast
+        from camoufox.sync_api import NewBrowser
+        from playwright._impl._connection import Connection as _PwConnection
+        from playwright._impl._greenlets import MainGreenlet as _PwMainGreenlet
+        from playwright._impl._object_factory import create_remote_object as _pw_create_remote
+        from playwright._impl._playwright import Playwright as _PwImpl
+        from playwright._impl._transport import PipeTransport as _PwPipeTransport
+        from playwright.sync_api._generated import Playwright as _SyncPlaywright
+    except Exception as exc:
+        logger.debug("[Camoufox] 无法启用隔离事件循环，继续用默认 Camoufox：%s", exc)
+        return camoufox_cls
+
+    class IsolatedCamoufox(camoufox_cls):
+        def __enter__(self):
+            self._loop = asyncio.new_event_loop()
+            self._own_loop = True
+
+            def _greenlet_main():
+                self._loop.run_until_complete(self._connection.run_as_sync())
+
+            dispatcher_fiber = _PwMainGreenlet(_greenlet_main)
+            self._connection = _PwConnection(
+                dispatcher_fiber,
+                _pw_create_remote,
+                _PwPipeTransport(self._loop),
+                self._loop,
+            )
+            g_self = greenlet.getcurrent()
+
+            def _callback_wrapper(channel_owner):
+                playwright_impl = _tcast(_PwImpl, channel_owner)
+                self._playwright = _SyncPlaywright(playwright_impl)
+                g_self.switch()
+
+            self._connection.call_on_object_with_known_name("Playwright", _callback_wrapper)
+            dispatcher_fiber.switch()
+            playwright = self._playwright
+            playwright.stop = self.__exit__
+            try:
+                self.browser = NewBrowser(self._playwright, **self.launch_options)
+            except BaseException as exc:
+                super().__exit__(type(exc), exc, exc.__traceback__)
+                raise
+            return self.browser
+
+    IsolatedCamoufox.__name__ = "IsolatedCamoufox"
+    IsolatedCamoufox.__qualname__ = "IsolatedCamoufox"
+    return IsolatedCamoufox
+
+
 def adapt_camoufox_proxy(proxy: str | None) -> dict | None:
     """把代理 URL 转成 Playwright/Camoufox 的 proxy dict。"""
     proxy = str(proxy or "").strip()
@@ -45,6 +102,27 @@ def adapt_camoufox_proxy(proxy: str | None) -> dict | None:
     if parsed.password:
         result["password"] = unquote(parsed.password)
     return result
+
+
+def _excluded_default_addons() -> list:
+    """与 grok-register 省流量模式一样，不加载 Camoufox 自带 uBlock。"""
+    try:
+        from camoufox.addons import DefaultAddons
+        return list(DefaultAddons)
+    except Exception:
+        return []
+
+
+def _camoufox_native_block_images() -> bool:
+    """省流量拦 image 时用 Camoufox 原生开关，避免 Playwright 全量 route。"""
+    try:
+        from config import browser as _browser_cfg
+        from core.browser_data_saver import configured_resource_types
+    except Exception:
+        return False
+    if not bool(getattr(_browser_cfg, "BROWSER_DATA_SAVER_MODE", False)):
+        return False
+    return "image" in configured_resource_types()
 
 
 def _resolve_launch_proxy(proxy: str | None) -> str | None:
@@ -71,6 +149,12 @@ def create_camoufox_options(proxy: str | None = None) -> dict:
         "timeout": timeout_ms,
         "persistent_context": True,
     }
+    if _camoufox_native_block_images():
+        opts["block_images"] = True
+    excluded = _excluded_default_addons()
+    if excluded:
+        # grok-register 容器默认排除 uBlock 等内置扩展，减少内容进程崩溃面。
+        opts["exclude_addons"] = excluded
     locale = str(getattr(_cfg, "CAMOUFOX_LOCALE", "") or "").strip()
     timezone = str(getattr(_cfg, "CAMOUFOX_TIMEZONE", "") or "").strip()
     if not locale and bool(getattr(_cfg, "CAMOUFOX_GEOIP", True)):
@@ -110,7 +194,17 @@ def build_camoufox_driver(proxy: str | None = None) -> tuple[CloakSeleniumDriver
     """启动 Camoufox 并返回 Selenium 风格 driver。"""
     proxy_url = _resolve_launch_proxy(proxy)
     opts = create_camoufox_options(proxy=proxy_url)
-    camoufox_cls = import_camoufox()
+    forwarder = None
+    try:
+        from core.proxy_auth_forwarder import maybe_start_http_auth_forwarder
+        forwarder = maybe_start_http_auth_forwarder(proxy_url)
+    except Exception as exc:
+        logger.warning("[Camoufox] 启动本地代理转发失败，继续把账密交给浏览器：%s: %s", type(exc).__name__, exc)
+        forwarder = None
+    if forwarder is not None:
+        logger.info("[Camoufox] HTTP 代理账密改为本地转发：%s -> %s", (opts.get("proxy") or {}).get("server") or proxy_url, forwarder.local_url)
+        opts["proxy"] = {"server": forwarder.local_url}
+    camoufox_cls = _isolate_camoufox_class(import_camoufox())
     instance = camoufox_cls(**opts)
     logger.info(
         "[Camoufox] 启动 Camoufox：headless=%s humanize=%s geoip=%s proxy=%s locale=%s timezone=%s persistent=%s",
@@ -127,6 +221,11 @@ def build_camoufox_driver(proxy: str | None = None) -> tuple[CloakSeleniumDriver
             instance.__exit__(*sys.exc_info())
         except Exception:
             pass
+        if forwarder is not None:
+            try:
+                forwarder.stop()
+            except Exception:
+                pass
         raise
 
     if hasattr(browser_or_ctx, "new_context"):
@@ -140,6 +239,7 @@ def build_camoufox_driver(proxy: str | None = None) -> tuple[CloakSeleniumDriver
         page = pages[0] if pages else context.new_page()
 
     driver = CloakSeleniumDriver(browser=browser, context=context, page=page, lifecycle=instance)
+    driver._proxy_forwarder = forwarder
     configured_dir = str(getattr(_cfg, "CAMOUFOX_USER_DATA_DIR", "") or "").strip()
     if opts.get("user_data_dir") and not configured_dir:
         driver._temp_profile_dir = opts["user_data_dir"]

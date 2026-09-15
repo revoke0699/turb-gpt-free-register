@@ -254,6 +254,13 @@ class CloakSeleniumDriver:
         except Exception:
             pass
         self._lifecycle = None
+        forwarder = getattr(self, "_proxy_forwarder", None)
+        if forwarder is not None:
+            try:
+                forwarder.stop()
+            except Exception:
+                pass
+            self._proxy_forwarder = None
         temp_dir = getattr(self, "_temp_profile_dir", None)
         if temp_dir:
             try:
@@ -477,7 +484,8 @@ def stealth_selenium_timeout() -> int:
 def install_stealth_data_saver(data_saver: Any, driver: Any) -> None:
     """Camoufox 是 Firefox，走 Playwright route；Cloak/Chromix 仍用 Chrome CDP。"""
     if resolve_stealth_engine() == "camoufox":
-        data_saver.install_playwright(driver.context)
+        # 全量 **/* 会拦邮箱提交后的 document 导航，Firefox 丢掉代理鉴权后 407 崩溃。
+        data_saver.install_playwright(driver.context, catch_all=False)
         return
     data_saver.install_selenium(driver)
 

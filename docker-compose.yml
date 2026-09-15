@@ -17,6 +17,9 @@ services:
       - "6080:6080"
     shm_size: "2gb"
     init: true
+    security_opt:
+      # grok-register 同样设置。Docker 默认 seccomp 会拦 Firefox 内容进程 syscall，标签页变成 Gah. Your tab just crashed。
+      - seccomp=unconfined
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:

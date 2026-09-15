@@ -49,15 +49,24 @@ def _project_code() -> str:
     return project_code
 
 
+def _new_direct_session() -> requests.Session:
+    """领取/取码走直连，忽略 HTTP_PROXY/ALL_PROXY 等环境代理。"""
+    session = requests.Session()
+    session.trust_env = False
+    return session
+
+
 def _request(method: str, path: str, *, params: dict | None = None, json: dict | None = None):
     try:
-        resp = requests.request(
+        session = _new_direct_session()
+        resp = session.request(
             method,
             BASE_URL + path,
             params=params,
             json=json,
             headers={"Authorization": f"Bearer {_api_key()}", "Accept": "application/json"},
             timeout=REQUEST_TIMEOUT,
+            proxies={"http": None, "https": None},
         )
     except requests.RequestException as exc:
         raise MailNestClientError(f"MailNest 请求失败 ({path}): {type(exc).__name__}: {exc}") from exc
