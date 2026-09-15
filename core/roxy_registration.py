@@ -1042,9 +1042,15 @@ def _wait_email_submit_next_state(driver, email: str, timeout: int = 18) -> str:
                 return "login_password"
             if any(token in lower for token in ("/create-account/password", "/signup/password", "/u/signup/password")):
                 return "password"
+            submitted = "/auth/login" in lower and "email=" in lower
+            if submitted and cleared_seen_at is None:
+                cleared_seen_at = time.time()
+                logger.info("%s 邮箱已提交，仍在 login?email= 中间页，继续等密码/验证码：url=%s", _log_prefix(driver), url[:180])
             try:
                 has_password = int(page.locator('input[type="password"]').count() or 0) > 0
-                has_otp = int(page.locator('input[autocomplete="one-time-code"], input[name="code"]').count() or 0) > 0
+                has_otp = int(page.locator(
+                    'input[autocomplete="one-time-code"], input[name="code"], input[inputmode="numeric"]'
+                ).count() or 0) > 0
             except Exception as exc:
                 if "TargetClosed" in type(exc).__name__ or "closed" in str(exc).lower():
                     logger.warning("%s 邮箱提交后页面已关闭：%s", _log_prefix(driver), exc)
@@ -1053,7 +1059,7 @@ def _wait_email_submit_next_state(driver, email: str, timeout: int = 18) -> str:
                 has_otp = False
             if has_password:
                 return "login_password" if "log-in" in lower else "password"
-            if has_otp or any(token in lower for token in ("email-verification", "/otp")):
+            if has_otp or any(token in lower for token in ("email-verification", "/otp", "verify-email")):
                 return "otp"
             time.sleep(0.5)
             continue
@@ -1143,7 +1149,8 @@ def _submit_email_and_wait_next(
         human_delay("form")
         _submit_email_step(driver, current_email)
         logger.info("%s 已提交邮箱，等待进入密码页或验证码页（%s/%s）", _log_prefix(driver), attempt, attempts)
-        state_name = _wait_email_submit_next_state(driver, current_email, timeout=20)
+        wait_timeout = 45 if getattr(driver, "page", None) is not None else 20
+        state_name = _wait_email_submit_next_state(driver, current_email, timeout=wait_timeout)
         if state_name == "login_password":
             raise RuntimeError(f"邮箱提交后进入登录密码页，按已注册/不可用邮箱处理并停用: url={getattr(driver, 'current_url', '') or 'https://auth.openai.com/log-in/password'}")
         if state_name in ("password", "otp", "logged_in"):
