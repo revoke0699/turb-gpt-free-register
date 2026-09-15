@@ -437,12 +437,6 @@ class CloakSeleniumDriver:
           const fn = new Function(...args.map((_, i) => 'a' + i), payload.script);
           return fn(...args);
         }"""
-        # grok-register 用 page.evaluate。Camoufox 提交邮箱后页面会导航，
-        # evaluate_handle 握住旧 document 的 JS 句柄，容易把内容进程打崩。
-        if resolve_stealth_engine() == "camoufox":
-            if first_el is not None:
-                return first_el._eval(element_wrapper, {"script": script, "args": serial_args})
-            return self.page.evaluate(wrapper, {"script": script, "args": serial_args})
         if first_el is not None:
             handle = first_el._eval_handle(element_wrapper, {"script": script, "args": serial_args})
         else:

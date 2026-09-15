@@ -270,18 +270,37 @@ def _apply_browser_automation_mask(driver) -> None:
 
 
 def _human_scroll_to(driver, el) -> None:
+    locator = getattr(el, "locator", None)
+    if locator is not None:
+        try:
+            locator.scroll_into_view_if_needed(timeout=3000)
+            if _browser_actions_enabled():
+                time.sleep(random.uniform(0.08, 0.35))
+            return
+        except Exception:
+            pass
     try:
         block = random.choice(["center", "nearest", "center"])
-        driver.execute_script("arguments[0].scrollIntoView({block: arguments[1], inline:'nearest'});", el, block)
+        driver.execute_script(
+            "const el=arguments[0]; if(el&&typeof el.scrollIntoView==='function') el.scrollIntoView({block: arguments[1], inline:'nearest'});",
+            el,
+            block,
+        )
         if _browser_actions_enabled():
             time.sleep(random.uniform(0.08, 0.35))
             # 轻微滚动抖动，避免每次都精准居中。
             driver.execute_script("window.scrollBy(0, arguments[0]);", random.randint(-90, 90))
             time.sleep(random.uniform(0.05, 0.22))
-            driver.execute_script("arguments[0].scrollIntoView({block:'center', inline:'nearest'});", el)
+            driver.execute_script(
+                "const el=arguments[0]; if(el&&typeof el.scrollIntoView==='function') el.scrollIntoView({block:'center', inline:'nearest'});",
+                el,
+            )
     except Exception:
         try:
-            driver.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
+            driver.execute_script(
+                "const el=arguments[0]; if(el&&typeof el.scrollIntoView==='function') el.scrollIntoView({block:'center'});",
+                el,
+            )
         except Exception:
             pass
 
@@ -1368,6 +1387,9 @@ def _set_element_value(driver, el, value: str) -> None:
     driver.execute_script(r"""
     const el = arguments[0];
     const value = String(arguments[1]);
+    if (!el || typeof el.scrollIntoView !== 'function') {
+      return {ok:false, reason:'not_element'};
+    }
     const tag = (el.tagName || '').toLowerCase();
     el.scrollIntoView({block:'center'});
     el.focus();
