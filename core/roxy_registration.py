@@ -554,37 +554,44 @@ def _click_email_entry_option(driver) -> bool:
     return False
 
 
+def _email_submit_arrived(url: str) -> str | None:
+    """提交后是否已经离开纯登录页。"""
+    lower = str(url or "").lower()
+    if "/log-in/password" in lower:
+        return "login_password"
+    if any(token in lower for token in ("/create-account/password", "/signup/password", "/u/signup/password")):
+        return "password"
+    if any(token in lower for token in ("email-verification", "/otp", "verify-email")):
+        return "otp"
+    if "/auth/login" in lower and "email=" in lower:
+        return "submitted"
+    return None
+
+
 def _wait_login_js_ready(driver, timeout: int = 20) -> bool:
-    """等登录表单的 React 挂上事件，避免点了只有 ?email= 查询参数、实际没发 sign-in。"""
+    """等提交按钮变为可用，或页面已经自己跳到验证码/密码页。"""
     page = getattr(driver, "page", None)
     if page is None:
         return True
     try:
-        page.wait_for_selector(
-            'form button[type="submit"]:not([disabled]), form input[type="submit"]:not([disabled])',
-            timeout=max(5, timeout) * 1000,
-        )
-    except Exception as exc:
-        logger.warning("%s 等待登录提交按钮超时：%s", _log_prefix(driver), exc)
-    try:
         page.wait_for_function(
             """() => {
-              const form = document.querySelector('form');
-              const input = document.querySelector('input[type="email"], input[name="email"]');
-              const btn = form && form.querySelector('button[type="submit"], input[type="submit"]');
-              if (!form || !input || !btn || btn.disabled) return false;
-              if (document.readyState !== 'complete') return false;
-              const nodes = [form, btn, input];
-              return nodes.some((el) => Object.keys(el).some((k) =>
-                k.startsWith('__reactFiber') || k.startsWith('__reactProps') || k.startsWith('__reactInternalInstance')
-              ));
+              const url = String(location.href || '');
+              if (url.includes('email-verification') || url.includes('/password') || url.includes('email=')) return true;
+              const btn = document.querySelector('form button[type="submit"], form input[type="submit"]');
+              if (!btn) return false;
+              const disabled = !!(btn.disabled
+                || btn.getAttribute('data-visually-disabled') != null
+                || String(btn.getAttribute('aria-disabled') || '').toLowerCase() === 'true'
+                || (btn.className || '').includes('cursor-not-allowed'));
+              return !disabled;
             }""",
             timeout=max(5, timeout) * 1000,
         )
-        logger.info("%s 登录页 React 已挂载，可以提交邮箱", _log_prefix(driver))
+        logger.info("%s 登录提交按钮已可用（或页面已跳转）", _log_prefix(driver))
         return True
     except Exception as exc:
-        logger.warning("%s 等待登录页 JS 就绪超时，仍尝试提交：%s", _log_prefix(driver), exc)
+        logger.warning("%s 等待登录提交按钮可用超时，仍尝试提交：%s", _log_prefix(driver), exc)
         return False
 
 
@@ -759,21 +766,41 @@ def _submit_email_form_stable(driver, email: str) -> dict:
         # 先 Enter 再普通 click；不要用 JS setTimeout(click)，那会打崩标签页。
         try:
             _wait_login_js_ready(driver, timeout=15)
+            arrived = _email_submit_arrived(str(getattr(page, "url", "") or ""))
+            if arrived:
+                return {"ok": True, "reason": f"already_{arrived}", "url": str(getattr(page, "url", "") or "")}
             email_box = page.locator('input[type="email"], input[name="email"]').first
             try:
                 email_box.press("Enter")
             except Exception:
                 pass
-            submit = page.locator('form button[type="submit"], form input[type="submit"]').first
-            submit.click(timeout=8000, no_wait_after=True)
-            deadline = time.time() + 2.5
+            deadline = time.time() + 8
             while time.time() < deadline:
                 url = str(getattr(page, "url", "") or "")
-                if "email=" in url:
-                    return {"ok": True, "reason": "playwright_enter_click", "url": url}
+                arrived = _email_submit_arrived(url)
+                if arrived:
+                    return {"ok": True, "reason": f"enter_{arrived}", "url": url}
                 time.sleep(0.2)
-            return {"ok": True, "reason": "playwright_enter_click", "url": str(getattr(page, "url", "") or "")}
+            submit = page.locator('form button[type="submit"], form input[type="submit"]').first
+            try:
+                submit.click(timeout=5000, no_wait_after=True)
+            except Exception as exc:
+                url = str(getattr(page, "url", "") or "")
+                arrived = _email_submit_arrived(url)
+                if arrived:
+                    return {"ok": True, "reason": f"nav_during_click_{arrived}", "url": url}
+                return {"ok": False, "reason": f"{type(exc).__name__}: {exc}"}
+            url = str(getattr(page, "url", "") or "")
+            return {"ok": True, "reason": "playwright_enter_click", "url": url}
         except Exception as exc:
+            url = ""
+            try:
+                url = str(getattr(page, "url", "") or "")
+            except Exception:
+                pass
+            arrived = _email_submit_arrived(url)
+            if arrived:
+                return {"ok": True, "reason": f"nav_after_error_{arrived}", "url": url}
             return {"ok": False, "reason": f"{type(exc).__name__}: {exc}"}
     try:
         return driver.execute_script(r"""
@@ -875,6 +902,16 @@ def _submit_email_step(driver, email: str | None = None) -> None:
         logger.info("%s 邮箱稳定表单提交：%s", _log_prefix(driver), stable_submit)
         time.sleep(1.0)
         _assert_not_external_idp(driver, "稳定表单提交邮箱后")
+        return
+    page = getattr(driver, "page", None)
+    url = ""
+    try:
+        url = str(getattr(page, "url", None) or getattr(driver, "current_url", "") or "")
+    except Exception:
+        url = ""
+    arrived = _email_submit_arrived(url)
+    if arrived:
+        logger.info("%s 提交动作报错但页面已进入 %s：url=%s", _log_prefix(driver), arrived, url[:180])
         return
     logger.warning("%s 邮箱稳定表单提交失败，回退 UI 点击提交：%s", _log_prefix(driver), stable_submit)
     if _submit_nearest_form_for_active_input(driver):

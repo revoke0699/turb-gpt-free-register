@@ -418,7 +418,23 @@ class PasswordPageTakesPrecedenceTests(unittest.TestCase):
 
         driver = _Driver()
         self.assertTrue(_wait_login_js_ready(driver, timeout=5))
-        self.assertIn("__reactFiber", driver.page.expression)
+        self.assertIn("email-verification", driver.page.expression)
+
+    def test_submit_treats_email_verification_navigation_as_success(self):
+        from core.roxy_registration import _submit_email_form_stable
+
+        class _Page:
+            url = "https://auth.openai.com/email-verification"
+
+            def wait_for_function(self, expression, timeout=20000):
+                return None
+
+        class _Driver:
+            page = _Page()
+
+        result = _submit_email_form_stable(_Driver(), "user@example.com")
+        self.assertTrue(result["ok"])
+        self.assertIn("otp", result["reason"])
 
     def test_submit_email_form_stable_uses_playwright_locator_click(self):
         from core.roxy_registration import _submit_email_form_stable
@@ -456,7 +472,7 @@ class PasswordPageTakesPrecedenceTests(unittest.TestCase):
 
         result = _submit_email_form_stable(_Driver(), "user@example.com")
         self.assertTrue(result["ok"])
-        self.assertEqual(result["reason"], "playwright_enter_click")
+        self.assertIn("submitted", result["reason"])
 
     def test_wait_next_state_on_playwright_page_skips_evaluate_handle(self):
         class _Loc:
