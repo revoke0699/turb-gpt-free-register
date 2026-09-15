@@ -284,6 +284,22 @@ def build_camoufox_driver(proxy: str | None = None) -> tuple[CloakSeleniumDriver
                     opts["config"] = config
         except Exception as exc:
             logger.debug("[Camoufox] 出口 IP 预探测失败，保持 geoip=True：%s", exc)
+    # Firefox 页面内跳转会丢掉 Proxy-Authorization，上游 407 后标签页直接崩溃。
+    # 浏览器只连本机无账密入口，由转发补鉴权。geoip 已换成出口 IP，不再走这层。
+    forwarder = None
+    try:
+        from core.proxy_auth_forwarder import maybe_start_http_auth_forwarder
+        forwarder = maybe_start_http_auth_forwarder(proxy_url)
+    except Exception as exc:
+        logger.warning("[Camoufox] 启动本地代理转发失败，继续把账密交给浏览器：%s: %s", type(exc).__name__, exc)
+        forwarder = None
+    if forwarder is not None:
+        logger.info("[Camoufox] HTTP 代理账密改为本地转发：%s -> %s", (opts.get("proxy") or {}).get("server") or proxy_url, forwarder.local_url)
+        opts["proxy"] = {"server": forwarder.local_url}
+        prefs = dict(opts.get("firefox_user_prefs") or {})
+        prefs["network.proxy.allow_hijacking_localhost"] = True
+        prefs["signon.autologin.proxy"] = True
+        opts["firefox_user_prefs"] = prefs
     camoufox_cls = _isolate_camoufox_class(import_camoufox())
     instance = camoufox_cls(**opts)
     logger.info(
@@ -303,6 +319,11 @@ def build_camoufox_driver(proxy: str | None = None) -> tuple[CloakSeleniumDriver
             instance.__exit__(*sys.exc_info())
         except Exception:
             pass
+        if forwarder is not None:
+            try:
+                forwarder.stop()
+            except Exception:
+                pass
         raise
 
     if hasattr(browser_or_ctx, "new_context"):
@@ -316,6 +337,7 @@ def build_camoufox_driver(proxy: str | None = None) -> tuple[CloakSeleniumDriver
         page = pages[0] if pages else context.new_page()
 
     driver = CloakSeleniumDriver(browser=browser, context=context, page=page, lifecycle=instance)
+    driver._proxy_forwarder = forwarder
     configured_dir = str(getattr(_cfg, "CAMOUFOX_USER_DATA_DIR", "") or "").strip()
     if opts.get("user_data_dir") and not configured_dir:
         driver._temp_profile_dir = opts["user_data_dir"]

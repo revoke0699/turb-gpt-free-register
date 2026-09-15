@@ -292,7 +292,7 @@ class CamoufoxDriverTests(unittest.TestCase):
         driver.quit()
         self.assertTrue(FakeCamoufox.last_instance.exited)
 
-    def test_build_camoufox_driver_passes_http_proxy_credentials_like_grok_register(self):
+    def test_build_camoufox_driver_forwards_http_proxy_auth_locally(self):
         from core.camoufox_driver import build_camoufox_driver
 
         class FakePage:
@@ -347,12 +347,15 @@ class CamoufoxDriverTests(unittest.TestCase):
             driver, opened = build_camoufox_driver(proxy="http://openai.9:secret@8.222.186.217:2260")
         try:
             proxy = FakeCamoufox.last_opts["proxy"]
-            self.assertEqual(proxy["server"], "http://8.222.186.217:2260")
-            self.assertEqual(proxy["username"], "openai.9")
-            self.assertEqual(proxy["password"], "secret")
+            self.assertNotIn("username", proxy)
+            self.assertNotIn("password", proxy)
+            self.assertTrue(str(proxy["server"]).startswith("http://127.0.0.1:"))
+            self.assertTrue(FakeCamoufox.last_opts["firefox_user_prefs"]["network.proxy.allow_hijacking_localhost"])
+            self.assertIsNotNone(getattr(driver, "_proxy_forwarder", None))
             self.assertEqual(opened.raw["proxy"], "http://openai.9:secret@8.222.186.217:2260")
         finally:
             driver.quit()
+        self.assertIsNone(getattr(driver, "_proxy_forwarder", None))
 
     def test_build_cloak_driver_dispatches_camoufox(self):
         sentinel = (object(), object())
