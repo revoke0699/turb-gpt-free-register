@@ -142,7 +142,26 @@ class CamoufoxDriverTests(unittest.TestCase):
             cfg.CAMOUFOX_SELENIUM_TIMEOUT = 90
             opts = create_camoufox_options(proxy="")
         self.assertEqual(opts["executable_path"], "/root/.cache/camoufox/camoufox-bin")
-        self.assertEqual(opts["ff_version"], "152")
+        self.assertEqual(opts["ff_version"], 152)
+
+    def test_ensure_camoufox_active_install_activates_local_browser(self):
+        import sys
+        import types
+        from core.camoufox_driver import _ensure_camoufox_active_install
+
+        class _Installed:
+            repo_name = "official"
+            path = type("P", (), {"name": "152.0.4-beta.30-abc"})()
+
+        pkgman = types.ModuleType("camoufox.pkgman")
+        pkgman.installed_verstr = MagicMock(side_effect=RuntimeError("official/stable is not installed"))
+        multi = types.ModuleType("camoufox.multiversion")
+        multi.list_installed = MagicMock(return_value=[_Installed()])
+        multi.set_active = MagicMock()
+        camoufox = types.ModuleType("camoufox")
+        with patch.dict(sys.modules, {"camoufox": camoufox, "camoufox.pkgman": pkgman, "camoufox.multiversion": multi}):
+            _ensure_camoufox_active_install()
+        multi.set_active.assert_called_once_with("browsers/official/152.0.4-beta.30-abc")
 
     def test_create_camoufox_options_excludes_default_addons_like_grok_register(self):
         from core.camoufox_driver import create_camoufox_options

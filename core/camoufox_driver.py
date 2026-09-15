@@ -28,25 +28,42 @@ def import_camoufox():
 
 
 def _detect_camoufox_exe() -> str:
-    """grok-register 同款：新格式走 launch_path，旧格式/config 缺失时扫 browsers/。"""
+    """只扫磁盘上的 camoufox-bin，不调用 launch_path（那会再查 official/stable）。"""
     try:
-        from camoufox.pkgman import INSTALL_DIR, LAUNCH_FILE, OS_NAME, launch_path
+        from camoufox.pkgman import INSTALL_DIR, LAUNCH_FILE, OS_NAME
     except Exception:
         return ""
     exe_name = LAUNCH_FILE.get(OS_NAME, "camoufox-bin")
-    try:
-        return str(launch_path() or "")
-    except Exception:
-        pass
-    legacy = INSTALL_DIR / exe_name
-    if legacy.exists():
-        return str(legacy)
+    candidates = [INSTALL_DIR / exe_name]
     browsers = INSTALL_DIR / "browsers"
     if browsers.exists():
-        matches = sorted(browsers.rglob(exe_name))
-        if matches:
-            return str(matches[-1])
+        candidates.extend(sorted(browsers.rglob(exe_name)))
+    for path in reversed(candidates):
+        if path.is_file():
+            return str(path)
     return ""
+
+
+def _ensure_camoufox_active_install() -> None:
+    """config 里 official/stable 对不上时，激活 browsers/ 下已有安装。"""
+    try:
+        from camoufox.pkgman import installed_verstr
+        installed_verstr()
+        return
+    except Exception as exc:
+        logger.warning("[Camoufox] official/stable 未就绪：%s，尝试激活本地安装", exc)
+    try:
+        from camoufox.multiversion import list_installed, set_active
+        installed = list_installed()
+        if not installed:
+            logger.warning("[Camoufox] 本地没有已安装的浏览器目录")
+            return
+        first = installed[0]
+        rel = getattr(first, "relative_path", None) or f"browsers/{first.repo_name}/{first.path.name}"
+        set_active(rel)
+        logger.info("[Camoufox] 已激活本地浏览器：%s", rel)
+    except Exception as exc:
+        logger.warning("[Camoufox] 激活本地浏览器失败：%s: %s", type(exc).__name__, exc)
 
 
 def _detect_ff_version() -> str:
@@ -161,8 +178,8 @@ def create_camoufox_options(proxy: str | None = None) -> dict:
         opts["executable_path"] = exe_path
     ff_version = _detect_ff_version()
     if ff_version:
-        # 与当前 binary 一致；不传的话 Camoufox 0.5 会去读 official/stable，config 异常就报未安装。
-        opts["ff_version"] = ff_version
+        # 必须是 int。不传的话 Camoufox 0.5 会去读 official/stable，config 异常就报未安装。
+        opts["ff_version"] = int(ff_version)
     proxy_dict = adapt_camoufox_proxy(proxy)
     if proxy_dict:
         opts["proxy"] = proxy_dict
@@ -190,6 +207,7 @@ def _infer_locale(proxy: str | None) -> str:
 def build_camoufox_driver(proxy: str | None = None) -> tuple[CloakSeleniumDriver, CloakOpenResult]:
     """启动 Camoufox 并返回 Selenium 风格 driver。"""
     proxy_url = _resolve_launch_proxy(proxy)
+    _ensure_camoufox_active_install()
     opts = create_camoufox_options(proxy=proxy_url)
     forwarder = None
     try:
