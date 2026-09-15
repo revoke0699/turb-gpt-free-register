@@ -177,6 +177,19 @@ def _excluded_default_addons() -> list:
         return []
 
 
+def _json_safe_camoufox_options(opts: dict[str, Any]) -> dict[str, Any]:
+    """opened.raw 会写入账号 JSON；DefaultAddons 枚举不能直接 dumps。"""
+    safe: dict[str, Any] = {}
+    for key, value in (opts or {}).items():
+        if key == "proxy":
+            continue
+        if key == "exclude_addons":
+            safe[key] = [getattr(item, "name", str(item)) for item in (value or [])]
+        else:
+            safe[key] = value
+    return safe
+
+
 def _camoufox_native_block_images() -> bool:
     """省流量拦 image 时用 Camoufox 原生开关，避免 Playwright 全量 route。"""
     try:
@@ -347,7 +360,5 @@ def build_camoufox_driver(proxy: str | None = None) -> tuple[CloakSeleniumDriver
     driver.set_page_load_timeout(int(getattr(_cfg, "CAMOUFOX_SELENIUM_TIMEOUT", 90) or 90))
     return driver, CloakOpenResult(
         profile_id="camoufox",
-        raw={"driver": "camoufox", "proxy": proxy_url, "options": {
-            k: v for k, v in opts.items() if k != "proxy"
-        }},
+        raw={"driver": "camoufox", "proxy": proxy_url, "options": _json_safe_camoufox_options(opts)},
     )

@@ -181,6 +181,22 @@ class CamoufoxDriverTests(unittest.TestCase):
             _ensure_camoufox_active_install()
         multi.set_active.assert_called_once_with("browsers/official/152.0.4-beta.30-abc")
 
+    def test_json_safe_camoufox_options_serializes_default_addons(self):
+        import json
+        from core.camoufox_driver import _json_safe_camoufox_options
+
+        class _Addon:
+            name = "UBO"
+
+        payload = _json_safe_camoufox_options({
+            "exclude_addons": [_Addon()],
+            "proxy": {"server": "http://127.0.0.1:1", "username": "u"},
+            "humanize": False,
+        })
+        self.assertEqual(payload["exclude_addons"], ["UBO"])
+        self.assertNotIn("proxy", payload)
+        json.dumps(payload)
+
     def test_create_camoufox_options_excludes_default_addons_like_grok_register(self):
         from core.camoufox_driver import create_camoufox_options
         with patch("core.camoufox_driver.tempfile.mkdtemp", return_value="/tmp/turb-camoufox-addons"), \
