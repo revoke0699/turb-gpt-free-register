@@ -39,6 +39,12 @@ if [ -n "$NOVNC_WEB" ] && command -v websockify >/dev/null 2>&1; then
   websockify --web="$NOVNC_WEB" 6080 127.0.0.1:5900 >/tmp/novnc.log 2>&1 &
 fi
 
+# Camoufox 0.5 要求 official/stable 通道；镜像里有 binary 时这里只做同步/激活。
+if command -v python >/dev/null 2>&1; then
+  python -m camoufox fetch || echo "[docker] camoufox fetch 失败，继续启动" >&2
+  python -m camoufox set official/stable || true
+fi
+
 # Xvfb/noVNC 继续用 root；Python/Camoufox 降到 /app 属主，避免 Firefox 以 root 跑标签页崩溃。
 if [ "$(id -u)" = "0" ] && command -v setpriv >/dev/null 2>&1; then
   APP_UID="$(stat -c %u /app 2>/dev/null || stat -f %u /app)"
