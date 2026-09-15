@@ -94,7 +94,7 @@ class CamoufoxDriverTests(unittest.TestCase):
             cfg.CAMOUFOX_SELENIUM_TIMEOUT = 90
             opts = create_camoufox_options(proxy="http://u:p@127.0.0.1:7890")
         self.assertTrue(opts["block_images"])
-        self.assertNotIn("disable_coop", opts)
+        self.assertTrue(opts["disable_coop"])
 
     def test_cloak_data_saver_still_uses_selenium_cdp(self):
         from core.cloakbrowser_driver import install_stealth_data_saver
@@ -281,6 +281,7 @@ class CamoufoxDriverTests(unittest.TestCase):
                  "persistent_context": True,
                  "user_data_dir": "/tmp/turb-camoufox-test",
              }), \
+             patch("core.camoufox_driver._ensure_camoufox_active_install"), \
              patch("core.camoufox_driver._cfg") as cfg:
             cfg.CAMOUFOX_SELENIUM_TIMEOUT = 90
             cfg.CAMOUFOX_USER_DATA_DIR = ""
@@ -291,7 +292,7 @@ class CamoufoxDriverTests(unittest.TestCase):
         driver.quit()
         self.assertTrue(FakeCamoufox.last_instance.exited)
 
-    def test_build_camoufox_driver_forwards_http_proxy_auth_locally(self):
+    def test_build_camoufox_driver_passes_http_proxy_credentials_like_grok_register(self):
         from core.camoufox_driver import build_camoufox_driver
 
         class FakePage:
@@ -331,6 +332,7 @@ class CamoufoxDriverTests(unittest.TestCase):
         with patch("core.camoufox_driver.import_camoufox", return_value=FakeCamoufox), \
              patch("core.camoufox_driver.tempfile.mkdtemp", return_value="/tmp/turb-camoufox-fwd"), \
              patch("core.camoufox_driver._infer_locale", return_value="en-US"), \
+             patch("core.camoufox_driver._ensure_camoufox_active_install"), \
              patch("core.camoufox_driver._cfg") as cfg:
             cfg.CAMOUFOX_HEADLESS = False
             cfg.CAMOUFOX_HUMANIZE = False
@@ -345,14 +347,12 @@ class CamoufoxDriverTests(unittest.TestCase):
             driver, opened = build_camoufox_driver(proxy="http://openai.9:secret@8.222.186.217:2260")
         try:
             proxy = FakeCamoufox.last_opts["proxy"]
-            self.assertNotIn("username", proxy)
-            self.assertNotIn("password", proxy)
-            self.assertTrue(str(proxy["server"]).startswith("http://127.0.0.1:"))
-            self.assertIsNotNone(getattr(driver, "_proxy_forwarder", None))
+            self.assertEqual(proxy["server"], "http://8.222.186.217:2260")
+            self.assertEqual(proxy["username"], "openai.9")
+            self.assertEqual(proxy["password"], "secret")
             self.assertEqual(opened.raw["proxy"], "http://openai.9:secret@8.222.186.217:2260")
         finally:
             driver.quit()
-        self.assertIsNone(getattr(driver, "_proxy_forwarder", None))
 
     def test_build_cloak_driver_dispatches_camoufox(self):
         sentinel = (object(), object())

@@ -981,15 +981,38 @@ def _wait_email_submit_next_state(driver, email: str, timeout: int = 18) -> str:
     cleared_last_log_at = 0.0
     cleared_recover_done = False
     expected_email = str(email or "").strip().lower()
+    page = getattr(driver, "page", None)
+    if page is not None:
+        try:
+            page.wait_for_url(
+                lambda url: any(
+                    token in str(url or "")
+                    for token in ("auth.openai.com", "/password", "otp", "challenge", "/about")
+                ),
+                timeout=min(12, timeout) * 1000,
+                wait_until="domcontentloaded",
+            )
+        except Exception:
+            try:
+                page.wait_for_load_state("domcontentloaded", timeout=3000)
+            except Exception:
+                pass
     while time.time() < end:
-        if _has_access_token(driver):
-            return "logged_in"
-        if _is_login_password_page(driver):
-            return "login_password"
-        if _is_signup_password_page(driver):
-            return "password"
-        if _is_email_verification_page(driver):
-            return "otp"
+        try:
+            if _has_access_token(driver):
+                return "logged_in"
+            if _is_login_password_page(driver):
+                return "login_password"
+            if _is_signup_password_page(driver):
+                return "password"
+            if _is_email_verification_page(driver):
+                return "otp"
+        except Exception as exc:
+            name = type(exc).__name__
+            if "TargetClosed" in name or "closed" in str(exc).lower():
+                logger.warning("%s 邮箱提交后页面已关闭：%s", _log_prefix(driver), exc)
+                return "unknown"
+            raise
         state = _email_input_value_state(driver)
         last = state
         inputs = state.get("inputs") or []

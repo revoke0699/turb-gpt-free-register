@@ -39,10 +39,17 @@ if [ -n "$NOVNC_WEB" ] && command -v websockify >/dev/null 2>&1; then
   websockify --web="$NOVNC_WEB" 6080 127.0.0.1:5900 >/tmp/novnc.log 2>&1 &
 fi
 
-# Camoufox 0.5 要求 official/stable 通道；镜像里有 binary 时这里只做同步/激活。
+# grok-register 用 XDG_CACHE_HOME=/opt/camoufox-cache，且与运行用户一致。
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-/opt/camoufox-cache}"
+mkdir -p "$XDG_CACHE_HOME"
+if [ -d /root/.cache/camoufox ] && [ ! -e "$XDG_CACHE_HOME/camoufox" ]; then
+  cp -a /root/.cache/camoufox "$XDG_CACHE_HOME/camoufox"
+fi
 if command -v python >/dev/null 2>&1; then
-  python -m camoufox fetch || echo "[docker] camoufox fetch 失败，继续启动" >&2
-  python -m camoufox set official/stable || true
+  env -u ALL_PROXY -u HTTP_PROXY -u HTTPS_PROXY -u all_proxy -u http_proxy -u https_proxy \
+    python -m camoufox fetch || echo "[docker] camoufox fetch 失败，继续启动" >&2
+  env -u ALL_PROXY -u HTTP_PROXY -u HTTPS_PROXY -u all_proxy -u http_proxy -u https_proxy \
+    python -m camoufox set official/stable || true
 fi
 
 # Xvfb/noVNC 继续用 root；Python/Camoufox 降到 /app 属主，避免 Firefox 以 root 跑标签页崩溃。
@@ -53,6 +60,7 @@ if [ "$(id -u)" = "0" ] && command -v setpriv >/dev/null 2>&1; then
     export HOME=/tmp
     rm -f /tmp/turb-gpt-free-register-web-*.lock
     chmod 1777 /tmp >/dev/null 2>&1 || true
+    chown -R "$APP_UID:$APP_GID" "$XDG_CACHE_HOME" 2>/dev/null || true
     exec setpriv --reuid="$APP_UID" --regid="$APP_GID" --clear-groups -- "$@"
   fi
 fi
