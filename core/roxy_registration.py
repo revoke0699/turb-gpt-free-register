@@ -1017,6 +1017,36 @@ def _wait_email_submit_next_state(driver, email: str, timeout: int = 18) -> str:
             except Exception:
                 pass
     while time.time() < end:
+        if page is not None:
+            # Camoufox/Firefox：提交后 SPA 会加载 conversation-small，evaluate_handle
+            # 会把内容进程打崩。这里只看 URL 和 locator，不跑 JS。
+            try:
+                url = str(getattr(page, "url", "") or "")
+            except Exception as exc:
+                if "TargetClosed" in type(exc).__name__ or "closed" in str(exc).lower():
+                    logger.warning("%s 邮箱提交后页面已关闭：%s", _log_prefix(driver), exc)
+                    return "unknown"
+                raise
+            lower = url.lower()
+            if "/log-in/password" in lower:
+                return "login_password"
+            if any(token in lower for token in ("/create-account/password", "/signup/password", "/u/signup/password")):
+                return "password"
+            try:
+                has_password = int(page.locator('input[type="password"]').count() or 0) > 0
+                has_otp = int(page.locator('input[autocomplete="one-time-code"], input[name="code"]').count() or 0) > 0
+            except Exception as exc:
+                if "TargetClosed" in type(exc).__name__ or "closed" in str(exc).lower():
+                    logger.warning("%s 邮箱提交后页面已关闭：%s", _log_prefix(driver), exc)
+                    return "unknown"
+                has_password = False
+                has_otp = False
+            if has_password:
+                return "login_password" if "log-in" in lower else "password"
+            if has_otp or any(token in lower for token in ("email-verification", "/otp")):
+                return "otp"
+            time.sleep(0.5)
+            continue
         try:
             if _has_access_token(driver):
                 return "logged_in"

@@ -402,6 +402,34 @@ class PasswordPageTakesPrecedenceTests(unittest.TestCase):
             state = _wait_email_submit_next_state(self._Driver(), "user@example.com", timeout=1)
         self.assertEqual(state, "password")
 
+    def test_wait_next_state_on_playwright_page_skips_evaluate_handle(self):
+        class _Loc:
+            def count(self):
+                return 1
+
+        class _Page:
+            url = "https://auth.openai.com/create-account/password"
+
+            def locator(self, selector):
+                return _Loc()
+
+            def wait_for_url(self, *args, **kwargs):
+                return None
+
+            def wait_for_load_state(self, *args, **kwargs):
+                return None
+
+        class _Driver:
+            page = _Page()
+            current_url = _Page.url
+
+        with patch("core.roxy_registration._email_input_value_state") as state_fn, \
+             patch("core.roxy_registration._has_access_token") as token_fn:
+            state = _wait_email_submit_next_state(_Driver(), "user@example.com", timeout=1)
+        self.assertEqual(state, "password")
+        state_fn.assert_not_called()
+        token_fn.assert_not_called()
+
 
 class ContinueWithPasswordMatcherTests(unittest.TestCase):
     def test_matcher_covers_localized_continue_with_password_text(self):

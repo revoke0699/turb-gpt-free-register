@@ -27,6 +27,7 @@ services:
       DISPLAY: ":99"
       CLOAK_HEADLESS: "False"
       CAMOUFOX_HEADLESS: "False"
+      CAMOUFOX_HUMANIZE: "False"
       CODEX_OAUTH_DRIVER: same_as_registration
       CLOAKBROWSER_CACHE_DIR: /opt/cloakbrowser
       XDG_CACHE_HOME: /opt/camoufox-cache
