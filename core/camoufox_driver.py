@@ -9,7 +9,7 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 
 from config import camoufox as _cfg
-from core.cloakbrowser_driver import CloakOpenResult, CloakSeleniumDriver
+from core.cloakbrowser_driver import CloakOpenResult, CloakSeleniumDriver, running_in_docker
 
 logger = logging.getLogger(__name__)
 
@@ -206,7 +206,9 @@ def create_camoufox_options(proxy: str | None = None) -> dict:
     timeout_ms = int(getattr(_cfg, "CAMOUFOX_SELENIUM_TIMEOUT", 90) or 90) * 1000
     opts: dict[str, Any] = {
         "headless": bool(getattr(_cfg, "CAMOUFOX_HEADLESS", False)),
-        "humanize": bool(getattr(_cfg, "CAMOUFOX_HUMANIZE", True)),
+        # Docker 里 humanize 鼠标轨迹会在 ChatGPT 提交后的导航中把内容进程打崩。
+        # .env / WebUI 常把 CAMOUFOX_HUMANIZE=True 盖过 compose。
+        "humanize": False if running_in_docker() else bool(getattr(_cfg, "CAMOUFOX_HUMANIZE", True)),
         "geoip": bool(getattr(_cfg, "CAMOUFOX_GEOIP", True)),
         "block_webrtc": bool(getattr(_cfg, "CAMOUFOX_BLOCK_WEBRTC", True)),
         # ChatGPT 提交邮箱后会跨源跳到 auth.openai.com / Turnstile。

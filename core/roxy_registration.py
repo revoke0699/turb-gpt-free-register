@@ -719,6 +719,16 @@ def _stabilize_email_input_before_submit(driver, email: str) -> dict:
 
 def _submit_email_form_stable(driver, email: str) -> dict:
     """第一次提交就按“补交成功”的方式执行：稳定 value 后 Enter + DOM click。"""
+    page = getattr(driver, "page", None)
+    if page is not None:
+        # grok-register 用 locator.click；Camoufox 上 execute_script + setTimeout(click)
+        # 会在导航开始时把标签页打崩。
+        try:
+            submit = page.locator('form button[type="submit"], form input[type="submit"]').first
+            submit.click(timeout=8000, force=True, no_wait_after=True)
+            return {"ok": True, "reason": "playwright_locator_click", "url": getattr(page, "url", "")}
+        except Exception as exc:
+            return {"ok": False, "reason": f"{type(exc).__name__}: {exc}"}
     try:
         return driver.execute_script(r"""
         const email = String(arguments[0] || '').trim();
@@ -1139,7 +1149,10 @@ def _submit_email_and_wait_next(
         if state_name in ("password", "otp", "logged_in"):
             logger.info("%s 邮箱提交后已进入下一步：%s", _log_prefix(driver), state_name)
             return state_name
-        logger.warning("%s 邮箱提交后仍未进入下一步：%s，准备重填重试 state=%s", _log_prefix(driver), state_name, _email_input_value_state(driver))
+        if state_name == "unknown":
+            logger.warning("%s 邮箱提交后页面已关闭，停止重填", _log_prefix(driver))
+            break
+        logger.warning("%s 邮箱提交后仍未进入下一步：%s，准备重填重试", _log_prefix(driver), state_name)
         time.sleep(1.0)
     raise RuntimeError(f"邮箱提交后未进入密码页/验证码页，最后状态={last_state}")
 

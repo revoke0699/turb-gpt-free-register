@@ -402,6 +402,35 @@ class PasswordPageTakesPrecedenceTests(unittest.TestCase):
             state = _wait_email_submit_next_state(self._Driver(), "user@example.com", timeout=1)
         self.assertEqual(state, "password")
 
+    def test_submit_email_form_stable_uses_playwright_locator_click(self):
+        from core.roxy_registration import _submit_email_form_stable
+
+        class _Submit:
+            def click(self, timeout=8000, force=True, no_wait_after=True):
+                self.clicked = True
+
+        class _Locator:
+            def __init__(self):
+                self._submit = _Submit()
+
+            @property
+            def first(self):
+                return self._submit
+
+        class _Page:
+            url = "https://chatgpt.com/auth/login"
+
+            def locator(self, selector):
+                self.selector = selector
+                return _Locator()
+
+        class _Driver:
+            page = _Page()
+
+        result = _submit_email_form_stable(_Driver(), "user@example.com")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["reason"], "playwright_locator_click")
+
     def test_wait_next_state_on_playwright_page_skips_evaluate_handle(self):
         class _Loc:
             def count(self):

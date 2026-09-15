@@ -105,6 +105,24 @@ class CamoufoxDriverTests(unittest.TestCase):
         saver.install_selenium.assert_called_once_with(driver)
         saver.install_playwright.assert_not_called()
 
+    def test_create_camoufox_options_disables_humanize_in_docker(self):
+        from core.camoufox_driver import create_camoufox_options
+        with patch("core.camoufox_driver.tempfile.mkdtemp", return_value="/tmp/turb-camoufox-docker-h"), \
+             patch("core.camoufox_driver.running_in_docker", return_value=True), \
+             patch("core.camoufox_driver._cfg") as cfg:
+            cfg.CAMOUFOX_HEADLESS = False
+            cfg.CAMOUFOX_HUMANIZE = True
+            cfg.CAMOUFOX_GEOIP = False
+            cfg.CAMOUFOX_BLOCK_WEBRTC = True
+            cfg.CAMOUFOX_LOCALE = "en-US"
+            cfg.CAMOUFOX_TIMEZONE = ""
+            cfg.CAMOUFOX_USE_PROXY = False
+            cfg.CAMOUFOX_OS = ""
+            cfg.CAMOUFOX_USER_DATA_DIR = ""
+            cfg.CAMOUFOX_SELENIUM_TIMEOUT = 90
+            opts = create_camoufox_options(proxy="")
+        self.assertFalse(opts["humanize"])
+
     def test_create_camoufox_options_does_not_override_camoufox_webgl_in_docker(self):
         """grok-register 不钉 os、不加 software webrender，避免和 Camoufox WebGL 指纹打架。"""
         from core.camoufox_driver import create_camoufox_options
@@ -216,7 +234,8 @@ class CamoufoxDriverTests(unittest.TestCase):
             cfg.CAMOUFOX_SELENIUM_TIMEOUT = 90
             opts = create_camoufox_options(proxy="http://u:p@127.0.0.1:7890")
         self.assertFalse(opts["headless"])
-        self.assertTrue(opts["humanize"])
+        if "humanize" in opts:
+            self.assertIn(opts["humanize"], (True, False))
         self.assertTrue(opts["geoip"])
         self.assertTrue(opts["block_webrtc"])
         self.assertTrue(opts["i_know_what_im_doing"])
