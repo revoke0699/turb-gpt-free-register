@@ -27,7 +27,7 @@ from core.roxy_registration import (  # noqa: F401
     _is_signup_password_page,
     _clear_otp_inputs, _type_otp, _click_continue, _wait_after_email_otp_submit,
     _click_resend_email_otp, _complete_profile_page, _fetch_chatgpt_session, _check_manual_stop,
-    _safe_get,
+    _safe_get, _wait_login_js_ready,
 )
 
 logger = logging.getLogger(__name__)
@@ -79,6 +79,7 @@ def run_cloak_registration(
         )
         human_delay("navigate")
         logger.info("[%s注册] 登录页加载完成，准备填写邮箱", tag)
+        _wait_login_js_ready(driver, timeout=20)
         _maybe_accept(driver)
         _check_manual_stop()
 

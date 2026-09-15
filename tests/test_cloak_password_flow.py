@@ -402,6 +402,24 @@ class PasswordPageTakesPrecedenceTests(unittest.TestCase):
             state = _wait_email_submit_next_state(self._Driver(), "user@example.com", timeout=1)
         self.assertEqual(state, "password")
 
+    def test_wait_login_js_ready_uses_playwright_wait_for_function(self):
+        from core.roxy_registration import _wait_login_js_ready
+
+        class _Page:
+            def wait_for_selector(self, selector, timeout=20000):
+                self.selector = selector
+
+            def wait_for_function(self, expression, timeout=20000):
+                self.expression = expression
+
+        class _Driver:
+            def __init__(self):
+                self.page = _Page()
+
+        driver = _Driver()
+        self.assertTrue(_wait_login_js_ready(driver, timeout=5))
+        self.assertIn("__reactFiber", driver.page.expression)
+
     def test_submit_email_form_stable_uses_playwright_locator_click(self):
         from core.roxy_registration import _submit_email_form_stable
 
@@ -426,6 +444,12 @@ class PasswordPageTakesPrecedenceTests(unittest.TestCase):
             def locator(self, selector):
                 self.selector = selector
                 return _Locator()
+
+            def wait_for_selector(self, selector, timeout=20000):
+                return None
+
+            def wait_for_function(self, expression, timeout=20000):
+                return None
 
         class _Driver:
             page = _Page()

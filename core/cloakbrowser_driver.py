@@ -217,7 +217,8 @@ class CloakSeleniumDriver:
         return None
 
     def get(self, url: str) -> None:
-        self.page.goto(url, wait_until="domcontentloaded", timeout=self._page_load_timeout_ms)
+        wait_until = "load" if resolve_stealth_engine() == "camoufox" else "domcontentloaded"
+        self.page.goto(url, wait_until=wait_until, timeout=self._page_load_timeout_ms)
 
     def back(self) -> None:
         self.page.go_back(wait_until="domcontentloaded", timeout=self._page_load_timeout_ms)

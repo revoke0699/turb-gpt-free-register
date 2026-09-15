@@ -554,6 +554,40 @@ def _click_email_entry_option(driver) -> bool:
     return False
 
 
+def _wait_login_js_ready(driver, timeout: int = 20) -> bool:
+    """等登录表单的 React 挂上事件，避免点了只有 ?email= 查询参数、实际没发 sign-in。"""
+    page = getattr(driver, "page", None)
+    if page is None:
+        return True
+    try:
+        page.wait_for_selector(
+            'form button[type="submit"]:not([disabled]), form input[type="submit"]:not([disabled])',
+            timeout=max(5, timeout) * 1000,
+        )
+    except Exception as exc:
+        logger.warning("%s 等待登录提交按钮超时：%s", _log_prefix(driver), exc)
+    try:
+        page.wait_for_function(
+            """() => {
+              const form = document.querySelector('form');
+              const input = document.querySelector('input[type="email"], input[name="email"]');
+              const btn = form && form.querySelector('button[type="submit"], input[type="submit"]');
+              if (!form || !input || !btn || btn.disabled) return false;
+              if (document.readyState !== 'complete') return false;
+              const nodes = [form, btn, input];
+              return nodes.some((el) => Object.keys(el).some((k) =>
+                k.startsWith('__reactFiber') || k.startsWith('__reactProps') || k.startsWith('__reactInternalInstance')
+              ));
+            }""",
+            timeout=max(5, timeout) * 1000,
+        )
+        logger.info("%s 登录页 React 已挂载，可以提交邮箱", _log_prefix(driver))
+        return True
+    except Exception as exc:
+        logger.warning("%s 等待登录页 JS 就绪超时，仍尝试提交：%s", _log_prefix(driver), exc)
+        return False
+
+
 def _wait_for_email_input(driver, timeout: int | None = None):
     """进入邮箱登录/注册方式并返回已找到的可见邮箱输入框。"""
     end = time.time() + (timeout or int(_cfg.ROXY_SELENIUM_TIMEOUT))
@@ -724,6 +758,7 @@ def _submit_email_form_stable(driver, email: str) -> dict:
         # force=True 在 Firefox 上可能点到按钮却不触发 React submit（URL 一直没有 email=）。
         # 先 Enter 再普通 click；不要用 JS setTimeout(click)，那会打崩标签页。
         try:
+            _wait_login_js_ready(driver, timeout=15)
             email_box = page.locator('input[type="email"], input[name="email"]').first
             try:
                 email_box.press("Enter")
