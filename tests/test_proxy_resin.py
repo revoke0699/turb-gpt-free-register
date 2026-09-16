@@ -116,7 +116,7 @@ class ProxyResinConfigTests(unittest.TestCase):
         self.assertEqual(fields["PROXY_RESIN_MODE"]["type"], "bool")
         self.assertEqual(fields["PROXY_RESIN_MODE"]["group"], "代理池")
         self.assertEqual(fields["PROXY_RESIN_TEMPLATE"]["type"], "str")
-        self.assertTrue(fields["PROXY_RESIN_TEMPLATE"].get("secret"))
+        self.assertFalse(fields["PROXY_RESIN_TEMPLATE"].get("secret"))
         self.assertEqual(fields["PROXY_RESIN_TEMPLATE"].get("storage"), "env")
         self.assertEqual(fields["PROXY_RESIN_TEMPLATE"]["group"], "代理池")
 

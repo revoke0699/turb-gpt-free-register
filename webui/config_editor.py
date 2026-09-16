@@ -590,7 +590,7 @@ EDITABLE_FIELDS = [
     {
         "key": "PROXY_RESIN_TEMPLATE", "file": "proxy.py", "type": "str", "group": "代理池",
         "label": "Resin代理链接", "help": "填写含 [task_任务id] 的代理 URL，例如 http://openai.[task_任务id]:密码@host:port。含认证信息，仅保存到 .env",
-        "storage": "env", "secret": True,
+        "storage": "env",
     },
     {
         "key": "PLAN_CHECK_PROXY_MODE", "file": "proxy.py", "type": "str", "group": "代理池",
