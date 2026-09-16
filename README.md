@@ -665,7 +665,19 @@ CPA_MANAGEMENT_KEY = "你的CPA管理密钥"
 ./webui.sh logs       # 查看实时日志
 ```
 
-脚本默认启动 `http://127.0.0.1:5000`，日志写入 `logs/webui.log`，PID 写入 `run/webui.pid`。
+Windows 使用项目根目录的 `webui.bat`（也可直接运行 `webui.ps1`）：
+
+```bat
+webui.bat start
+webui.bat stop
+webui.bat restart
+webui.bat status
+webui.bat logs
+```
+
+双击 `webui.bat` 等价于 `webui.bat start`。
+
+脚本默认启动 `http://127.0.0.1:5000`，日志写入 `logs/webui.log`，PID 写入 `run/webui.pid`。优先使用项目 `.venv\Scripts\python.exe`，否则回退到 `python` / `py -3`。
 
 可通过环境变量调整：
 
@@ -673,6 +685,12 @@ CPA_MANAGEMENT_KEY = "你的CPA管理密钥"
 PORT=8000 OPEN_BROWSER=1 ./webui.sh start
 HOST=0.0.0.0 PORT=5000 ./webui.sh restart
 AUTH_CODE=你的授权码 ./webui.sh start
+```
+
+```bat
+set PORT=8000 && set OPEN_BROWSER=1 && webui.bat start
+set HOST=0.0.0.0 && set PORT=5000 && webui.bat restart
+set AUTH_CODE=你的授权码 && webui.bat start
 ```
 
 也可以直接前台启动：
