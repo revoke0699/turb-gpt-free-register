@@ -438,21 +438,20 @@ _EMAIL_INPUT_SELECTORS = [
 def _email_entry_state(driver) -> dict:
     try:
         return driver.execute_script(r"""
-        const visible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
-          && getComputedStyle(el).visibility !== 'hidden' && getComputedStyle(el).display !== 'none'
-          && !el.disabled;
         const attrText = el => [
           el.id, el.getAttribute('name'), el.getAttribute('type'), el.getAttribute('autocomplete'),
           el.getAttribute('data-testid'), el.getAttribute('data-test-id'), el.getAttribute('data-provider'),
           el.getAttribute('data-auth-provider'), el.getAttribute('href'), el.getAttribute('action'),
           el.getAttribute('formaction'), el.getAttribute('value')
         ].filter(Boolean).join(' ').toLowerCase();
-        const inputs = [...document.querySelectorAll('input')].filter(visible).map(el => ({
+        const painted = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
+          && getComputedStyle(el).visibility !== 'hidden' && getComputedStyle(el).display !== 'none';
+        const inputs = [...document.querySelectorAll('input')].filter(painted).map(el => ({
           type: el.getAttribute('type') || '', name: el.getAttribute('name') || '', id: el.id || '',
-          autocomplete: el.getAttribute('autocomplete') || '', value: el.value || ''
+          autocomplete: el.getAttribute('autocomplete') || '', disabled: !!el.disabled, value: el.value || ''
         })).slice(0, 30);
         const actions = [...document.querySelectorAll('button,a,[role=button],input[type=button],input[type=submit]')]
-          .filter(visible).map(el => ({tag: el.tagName, type: el.getAttribute('type') || '', attrs: attrText(el)})).slice(0, 40);
+          .filter(painted).map(el => ({tag: el.tagName, type: el.getAttribute('type') || '', disabled: !!el.disabled, attrs: attrText(el)})).slice(0, 40);
         return {url: location.href, title: document.title, inputs, actions};
         """) or {}
     except Exception as exc:
@@ -628,9 +627,14 @@ def _submit_nearest_form_for_active_input(driver) -> bool:
     const visible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
       && getComputedStyle(el).visibility !== 'hidden' && getComputedStyle(el).display !== 'none'
       && !el.disabled && el.getAttribute('aria-disabled') !== 'true';
+    const painted = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
+      && getComputedStyle(el).visibility !== 'hidden' && getComputedStyle(el).display !== 'none';
     const input = [...document.querySelectorAll('input[type="email"],input[name="email"],input[name="username"],input[autocomplete="email"]')]
-      .find(visible);
+      .find(painted);
     if (!input) return {ok:false, reason:'missing_email_input'};
+    if (input.disabled || input.readOnly || String(input.getAttribute('aria-disabled') || '').toLowerCase() === 'true') {
+      return {ok:false, reason:'email_input_disabled', value: String(input.value || '')};
+    }
     const value = String(input.value || '').trim();
     if (!value || !value.includes('@')) return {ok:false, reason:'email_value_not_ready', value};
     const form = input.closest('form');
@@ -758,30 +762,78 @@ def _stabilize_email_input_before_submit(driver, email: str) -> dict:
         return {"ok": False, "reason": f"{type(exc).__name__}: {exc}"}
 
 
+# 提交中的主按钮：disabled / data-visually-disabled，并且文案被转圈替换。
+# 还显示 Continue 的禁用按钮是“邮箱还没校验完”，不能当成已经提交。
+_SUBMIT_BUTTON_LOADING_JS = r"""el => {
+  if (!el) return false;
+  const flagged = !!(el.disabled
+    || el.getAttribute('data-visually-disabled') != null
+    || String(el.getAttribute('aria-disabled') || '').toLowerCase() === 'true'
+    || String(el.className || '').includes('cursor-not-allowed')
+    || String(el.getAttribute('aria-busy') || '').toLowerCase() === 'true');
+  if (!flagged) return false;
+  const text = String(el.innerText || '').replace(/\s+/g, '');
+  const spinning = String(el.getAttribute('aria-busy') || '').toLowerCase() === 'true'
+    || !!el.querySelector('svg, [role="progressbar"], .animate-spin');
+  return spinning || text.length === 0;
+}"""
+
+
+def _submit_button_is_loading(locator) -> bool:
+    try:
+        return bool(locator.evaluate(_SUBMIT_BUTTON_LOADING_JS))
+    except Exception:
+        return False
+
+
+def _email_form_submit_pending(driver) -> bool:
+    """主提交按钮是否已经进入转圈。此时输入框常被禁用，不能再点。"""
+    page = getattr(driver, "page", None)
+    if page is None:
+        return False
+    try:
+        submit = page.locator('form button[type="submit"], form input[type="submit"]').first
+        return _submit_button_is_loading(submit)
+    except Exception:
+        return False
+
+
 def _submit_email_form_stable(driver, email: str) -> dict:
     """第一次提交就按“补交成功”的方式执行：稳定 value 后 Enter + DOM click。"""
     page = getattr(driver, "page", None)
     if page is not None:
         # force=True 在 Firefox 上可能点到按钮却不触发 React submit（URL 一直没有 email=）。
         # 先 Enter 再普通 click；不要用 JS setTimeout(click)，那会打崩标签页。
+        # Enter 成功时按钮会变成 disabled + 转圈，这时再 click 会干等“元素未启用”。
         try:
             _wait_login_js_ready(driver, timeout=15)
             arrived = _email_submit_arrived(str(getattr(page, "url", "") or ""))
             if arrived:
                 return {"ok": True, "reason": f"already_{arrived}", "url": str(getattr(page, "url", "") or "")}
             email_box = page.locator('input[type="email"], input[name="email"]').first
+            submit = page.locator('form button[type="submit"], form input[type="submit"]').first
+            pending_before = _submit_button_is_loading(submit)
             try:
                 email_box.press("Enter")
             except Exception:
                 pass
             deadline = time.time() + 8
+            loading_since = None
             while time.time() < deadline:
                 url = str(getattr(page, "url", "") or "")
                 arrived = _email_submit_arrived(url)
                 if arrived:
                     return {"ok": True, "reason": f"enter_{arrived}", "url": url}
+                loading = _submit_button_is_loading(submit)
+                if loading and not pending_before:
+                    if loading_since is None:
+                        loading_since = time.time()
+                    elif time.time() - loading_since >= 1.5:
+                        logger.info("%s 邮箱提交按钮已进入转圈，停止再点并等待跳转：url=%s", _log_prefix(driver), url[:180])
+                        return {"ok": True, "reason": "enter_pending", "url": url}
+                else:
+                    loading_since = None
                 time.sleep(0.2)
-            submit = page.locator('form button[type="submit"], form input[type="submit"]').first
             try:
                 submit.click(timeout=5000, no_wait_after=True)
             except Exception as exc:
@@ -789,6 +841,9 @@ def _submit_email_form_stable(driver, email: str) -> dict:
                 arrived = _email_submit_arrived(url)
                 if arrived:
                     return {"ok": True, "reason": f"nav_during_click_{arrived}", "url": url}
+                if _submit_button_is_loading(submit) and not pending_before:
+                    logger.info("%s 点击时提交按钮已在转圈，视为已提交并等待跳转：url=%s", _log_prefix(driver), url[:180])
+                    return {"ok": True, "reason": "enter_pending", "url": url}
                 return {"ok": False, "reason": f"{type(exc).__name__}: {exc}"}
             url = str(getattr(page, "url", "") or "")
             return {"ok": True, "reason": "playwright_enter_click", "url": url}
@@ -912,6 +967,9 @@ def _submit_email_step(driver, email: str | None = None) -> None:
     arrived = _email_submit_arrived(url)
     if arrived:
         logger.info("%s 提交动作报错但页面已进入 %s：url=%s", _log_prefix(driver), arrived, url[:180])
+        return
+    if _email_form_submit_pending(driver):
+        logger.info("%s 主提交按钮已在转圈，跳过禁用按钮点击并等待跳转：%s", _log_prefix(driver), stable_submit)
         return
     logger.warning("%s 邮箱稳定表单提交失败，回退 UI 点击提交：%s", _log_prefix(driver), stable_submit)
     if _submit_nearest_form_for_active_input(driver):
@@ -1077,6 +1135,21 @@ def _is_email_login_page_still_present(driver) -> bool:
     return bool(state.get("inputs"))
 
 
+def _email_login_form_present(driver) -> bool:
+    """邮箱框还在就说明仍停在登录页。提交中的输入框是 disabled，不能因此当成页面已关闭。"""
+    page = getattr(driver, "page", None)
+    if page is not None:
+        try:
+            count = page.locator(
+                'input[type="email"], input[name="email"], input[name="username"]'
+            ).count()
+            if int(count or 0) > 0:
+                return True
+        except Exception:
+            pass
+    return _is_email_login_page_still_present(driver)
+
+
 def _wait_email_submit_next_state(driver, email: str, timeout: int = 18) -> str:
     """邮箱提交后等待进入 password / otp / logged_in；仍停留邮箱页则返回 email_page。
 
@@ -1197,7 +1270,7 @@ def _wait_email_submit_next_state(driver, email: str, timeout: int = 18) -> str:
             # 仍是当前邮箱页，继续短等。
         time.sleep(0.8)
     logger.info("%s 邮箱提交后等待下一步超时，最后邮箱页状态=%s", _log_prefix(driver), last)
-    return "email_page" if _is_email_login_page_still_present(driver) else "unknown"
+    return "email_page" if _email_login_form_present(driver) else "unknown"
 
 
 def _submit_email_and_wait_next(

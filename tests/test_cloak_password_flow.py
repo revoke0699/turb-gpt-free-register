@@ -474,6 +474,218 @@ class PasswordPageTakesPrecedenceTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertIn("submitted", result["reason"])
 
+    def test_spinning_submit_after_enter_is_pending_and_not_clicked(self):
+        from core.roxy_registration import _submit_email_form_stable
+
+        class _Clock:
+            def __init__(self):
+                self.now = 1000.0
+
+            def time(self):
+                return self.now
+
+            def sleep(self, seconds):
+                self.now += float(seconds)
+
+        class _Email:
+            pressed = False
+
+            def press(self, key):
+                self.pressed = key == "Enter"
+
+        class _Submit:
+            def __init__(self, email):
+                self.email = email
+                self.clicked = False
+
+            def evaluate(self, expression):
+                return self.email.pressed
+
+            def click(self, timeout=5000, no_wait_after=True):
+                self.clicked = True
+                raise AssertionError("转圈中的提交按钮不应再点击")
+
+        email = _Email()
+        submit = _Submit(email)
+
+        class _Page:
+            url = "https://chatgpt.com/auth/login"
+
+            def locator(self, selector):
+                if "submit" in selector:
+                    return type("L", (), {"first": submit})()
+                return type("L", (), {"first": email})()
+
+            def wait_for_function(self, expression, timeout=20000):
+                return None
+
+        class _Driver:
+            page = _Page()
+
+        clock = _Clock()
+        with patch("core.roxy_registration.time.time", clock.time), \
+             patch("core.roxy_registration.time.sleep", clock.sleep):
+            result = _submit_email_form_stable(_Driver(), "user@example.com")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["reason"], "enter_pending")
+        self.assertFalse(submit.clicked)
+        self.assertTrue(email.pressed)
+
+    def test_click_timeout_on_loading_button_counts_as_pending(self):
+        from core.roxy_registration import _submit_email_form_stable
+
+        class _Clock:
+            def __init__(self):
+                self.now = 1000.0
+
+            def time(self):
+                return self.now
+
+            def sleep(self, seconds):
+                self.now += float(seconds)
+
+        class _Email:
+            def press(self, key):
+                return None
+
+        class _Submit:
+            def __init__(self):
+                self.loading = False
+                self.clicked = False
+
+            def evaluate(self, expression):
+                return self.loading
+
+            def click(self, timeout=5000, no_wait_after=True):
+                self.clicked = True
+                self.loading = True
+                raise TimeoutError(
+                    'Locator.click: Timeout 5000ms exceeded.\n'
+                    'element is not enabled'
+                )
+
+        email = _Email()
+        submit = _Submit()
+
+        class _Page:
+            url = "https://chatgpt.com/auth/login"
+
+            def locator(self, selector):
+                if "submit" in selector:
+                    return type("L", (), {"first": submit})()
+                return type("L", (), {"first": email})()
+
+            def wait_for_function(self, expression, timeout=20000):
+                return None
+
+        class _Driver:
+            page = _Page()
+
+        clock = _Clock()
+        with patch("core.roxy_registration.time.time", clock.time), \
+             patch("core.roxy_registration.time.sleep", clock.sleep):
+            result = _submit_email_form_stable(_Driver(), "user@example.com")
+        self.assertTrue(submit.clicked)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["reason"], "enter_pending")
+
+    def test_enabled_submit_still_uses_click(self):
+        from core.roxy_registration import _submit_email_form_stable
+
+        class _Clock:
+            def __init__(self):
+                self.now = 1000.0
+
+            def time(self):
+                return self.now
+
+            def sleep(self, seconds):
+                self.now += float(seconds)
+
+        class _Email:
+            def press(self, key):
+                return None
+
+        class _Submit:
+            def __init__(self):
+                self.clicked = False
+
+            def evaluate(self, expression):
+                return False
+
+            def click(self, timeout=5000, no_wait_after=True):
+                self.clicked = True
+
+        submit = _Submit()
+
+        class _Page:
+            url = "https://chatgpt.com/auth/login"
+
+            def locator(self, selector):
+                if "submit" in selector:
+                    return type("L", (), {"first": submit})()
+                return type("L", (), {"first": _Email()})()
+
+            def wait_for_function(self, expression, timeout=20000):
+                return None
+
+        class _Driver:
+            page = _Page()
+
+        clock = _Clock()
+        with patch("core.roxy_registration.time.time", clock.time), \
+             patch("core.roxy_registration.time.sleep", clock.sleep):
+            result = _submit_email_form_stable(_Driver(), "user@example.com")
+        self.assertTrue(submit.clicked)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["reason"], "playwright_enter_click")
+
+    def test_submit_step_does_not_treat_loading_form_as_missing_input(self):
+        from core.roxy_registration import _submit_email_step
+
+        class _Driver:
+            page = object()
+            current_url = "https://chatgpt.com/auth/login"
+
+        with patch("core.roxy_registration._stabilize_email_input_before_submit", return_value={"ok": True}), \
+             patch("core.roxy_registration._browser_actions_enabled", return_value=False), \
+             patch("core.roxy_registration.time.sleep"), \
+             patch("core.roxy_registration._submit_email_form_stable", return_value={"ok": False, "reason": "TimeoutError: element is not enabled"}), \
+             patch("core.roxy_registration._email_form_submit_pending", return_value=True), \
+             patch("core.roxy_registration._submit_nearest_form_for_active_input") as nearest:
+            _submit_email_step(_Driver(), "user@example.com")
+        nearest.assert_not_called()
+
+    def test_wait_next_state_keeps_email_page_when_only_disabled_input_remains(self):
+        class _Loc:
+            def __init__(self, count):
+                self._count = count
+
+            def count(self):
+                return self._count
+
+        class _Page:
+            url = "https://chatgpt.com/auth/login"
+
+            def locator(self, selector):
+                if "password" in selector or "one-time-code" in selector or 'name="code"' in selector:
+                    return _Loc(0)
+                return _Loc(1)
+
+            def wait_for_url(self, *args, **kwargs):
+                raise TimeoutError("still on login")
+
+            def wait_for_load_state(self, *args, **kwargs):
+                return None
+
+        class _Driver:
+            page = _Page()
+            current_url = _Page.url
+
+        with patch("core.roxy_registration.time.sleep"):
+            state = _wait_email_submit_next_state(_Driver(), "user@example.com", timeout=0)
+        self.assertEqual(state, "email_page")
+
     def test_wait_next_state_on_playwright_page_skips_evaluate_handle(self):
         class _Loc:
             def count(self):
