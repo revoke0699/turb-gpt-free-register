@@ -29,6 +29,22 @@ from core.humanize import delay as human_delay
 
 logger = logging.getLogger(__name__)
 
+
+def _settle_cloudflare_page(page, *, timeout: float = 20.0, poke: bool = False) -> str:
+    from core.turnstile import CloudflareChallengeError, ensure_turnstile, poke_turnstile
+
+    log = lambda message: logger.info("[%s] %s", _log_provider_label(), message)  # noqa: E731
+    try:
+        if poke:
+            return poke_turnstile(page, log=log)
+        return ensure_turnstile(page, timeout=timeout, log=log)
+    except CloudflareChallengeError:
+        raise
+    except Exception as exc:
+        logger.debug("[%s] Turnstile 处理失败，继续流程：%s", _log_provider_label(), exc)
+        return ""
+
+
 _LOG_CONTEXT = threading.local()
 
 
@@ -709,6 +725,7 @@ def _find_email_input_locator_pw(page, timeout_ms: int = 1000):
 
 def _submit_email_step_pw(page, email: str) -> bool:
     """Playwright 版 Roxy 安全提交：只提交邮箱输入框所在 form 附近的非第三方按钮。"""
+    _settle_cloudflare_page(page, timeout=20)
     try:
         result = page.evaluate(r"""
         (email) => {
@@ -903,6 +920,7 @@ def _wait_after_email_submit_transition(page, context=None, timeout: int = 14) -
             return state
         if "chatgpt.com" in lower and "/auth/" not in lower:
             return "chatgpt"
+        _settle_cloudflare_page(page, poke=True)
         time.sleep(0.25 if _fast_mode() else 0.5)
     if "chatgpt.com/auth/login" in last_url.lower():
         return "email_page"
@@ -1443,6 +1461,7 @@ def _clear_otp_inputs(page) -> None:
 
 
 def _click_continue(page) -> None:
+    _settle_cloudflare_page(page, timeout=12)
     if not _click_first(
         page,
         [

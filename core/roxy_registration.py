@@ -23,6 +23,22 @@ from core.roxybrowser_client import RoxyBrowserClient, RoxyOpenResult
 logger = logging.getLogger(__name__)
 
 
+def _settle_cloudflare(driver, *, timeout: float = 20.0, poke: bool = False) -> str:
+    """提交或跳转卡住时处理 Cloudflare Turnstile。没有控件则什么都不做。"""
+    from core.turnstile import CloudflareChallengeError, ensure_turnstile, poke_turnstile
+
+    log = lambda message: logger.info("%s %s", _log_prefix(driver), message)  # noqa: E731
+    try:
+        if poke:
+            return poke_turnstile(driver, log=log)
+        return ensure_turnstile(driver, timeout=timeout, log=log)
+    except CloudflareChallengeError:
+        raise
+    except Exception as exc:
+        logger.debug("%s Turnstile 处理失败，继续流程：%s", _log_prefix(driver), exc)
+        return ""
+
+
 def _enable_performance_logging(options) -> None:
     """尽量开启 Chrome performance log；不支持时不阻断注册。"""
     try:
@@ -172,8 +188,12 @@ def _safe_get(driver, url: str, *, timeout: int = 45, attempts: int = 2, accept_
             except Exception:
                 pass
             driver.get(url)
+            _settle_cloudflare(driver, timeout=12)
             return
         except Exception as exc:
+            from core.turnstile import CloudflareChallengeError
+            if isinstance(exc, CloudflareChallengeError):
+                raise
             if not _is_retryable_navigation_error(exc):
                 raise
             last_exc = exc
@@ -203,6 +223,7 @@ def _safe_get(driver, url: str, *, timeout: int = 45, attempts: int = 2, accept_
                         "%s 页面加载虽超时但 DOM 可用，继续流程：current=%s readyState=%s",
                         _log_prefix(driver), current[:180], ready or "-",
                     )
+                    _settle_cloudflare(driver, timeout=12)
                     return
                 if attempt < attempts:
                     try:
@@ -944,6 +965,7 @@ def _submit_email_form_stable(driver, email: str) -> dict:
 
 
 def _submit_email_step(driver, email: str | None = None) -> None:
+    _settle_cloudflare(driver, timeout=20)
     # 不再优先走浏览器内 NextAuth fetch：
     # Roxy/Chrome 150 下 execute_async_script + fetch 偶发卡到 script timeout；
     # 实测 UI 首次提交后若停在 /auth/login?email=...，由 _recover_email_submit_if_stuck 补交表单更稳定。
@@ -1217,6 +1239,7 @@ def _wait_email_submit_next_state(driver, email: str, timeout: int = 18) -> str:
                 return "login_password" if "log-in" in lower else "password"
             if has_otp or any(token in lower for token in ("email-verification", "/otp", "verify-email")):
                 return "otp"
+            _settle_cloudflare(driver, poke=True)
             time.sleep(0.5)
             continue
         try:
@@ -1268,6 +1291,7 @@ def _wait_email_submit_next_state(driver, email: str, timeout: int = 18) -> str:
             else:
                 cleared_seen_at = None
             # 仍是当前邮箱页，继续短等。
+        _settle_cloudflare(driver, poke=True)
         time.sleep(0.8)
     logger.info("%s 邮箱提交后等待下一步超时，最后邮箱页状态=%s", _log_prefix(driver), last)
     return "email_page" if _email_login_form_present(driver) else "unknown"
@@ -1494,6 +1518,7 @@ def _wait_after_email_otp_submit(driver, timeout: int = 30) -> str:
 
 
 def _click_continue(driver) -> None:
+    _settle_cloudflare(driver, timeout=12)
     _click_any(driver, [
         "button[type='submit']",
         "//button[@data-dd-action-name='Continue']",
@@ -2187,6 +2212,7 @@ def _fill_password_page_if_present(driver, email: str, timeout: int = 25) -> str
         # React/Auth0 会在 input/change 后异步校验密码强度并启用 Continue。
         # 之前输入完 0.4~1.4s 就点，偶发点在按钮还未真正可提交/事件未绑定完成时，页面无反应。
         human_delay("form", minimum=2.0, maximum=3.6)
+        _settle_cloudflare(driver, timeout=15)
         submit_result = driver.execute_script(r"""
         const visible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
           && getComputedStyle(el).visibility !== 'hidden' && getComputedStyle(el).display !== 'none';
@@ -2373,6 +2399,7 @@ def _complete_profile_page(driver, name: str, birthday: str, timeout: int = 45) 
 
         _accept_profile_consents(driver)
         human_delay('form')
+        _settle_cloudflare(driver, timeout=15)
         for _ in range(3):
             if _click_if_enabled_submit(driver):
                 logger.info('%s 已点击资料页提交按钮，等待 OAuth 跳转', _log_prefix(driver))
