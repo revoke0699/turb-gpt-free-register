@@ -58,15 +58,66 @@ _INTERSTITIAL_JS = r"""
 const title = String(document.title || '').toLowerCase();
 const text = String((document.body && document.body.innerText) || '').slice(0, 500).toLowerCase();
 const href = String(location.href || '').toLowerCase();
-const markers = ['just a moment', 'attention required', 'verify you are human', '正在验证您是否是真人', 'enable javascript and cookies'];
+const markers = ['just a moment', 'attention required', 'performing security verification', 'security verification', 'verify you are human', 'confirm you are human', 'sicherheitsüberprüfung', 'sicherheitsuberprufung', 'bestätigen sie, dass sie ein mensch sind', '正在验证您是否是真人', 'enable javascript and cookies'];
 return markers.some(item => title.includes(item) || text.includes(item))
   || href.includes('__cf_chl')
   || href.includes('/cdn-cgi/challenge');
 """
 
 
+_INTERSTITIAL_TITLE_MARKERS = (
+    "just a moment",
+    "attention required",
+    "performing security verification",
+    "security verification",
+    "verify you are human",
+    "confirm you are human",
+    "sicherheitsüberprüfung",
+    "sicherheitsuberprufung",
+    "bestätigen sie, dass sie ein mensch sind",
+    "正在验证您是否是真人",
+)
+
+
 class CloudflareChallengeError(RuntimeError):
     """整页 Cloudflare 挑战未通过，继续提交没有意义。"""
+
+
+def interstitial_url(url: str) -> bool:
+    lowered = str(url or "").lower()
+    return "__cf_chl" in lowered or "/cdn-cgi/challenge" in lowered
+
+
+def interstitial_title(title: str) -> bool:
+    lowered = str(title or "").lower()
+    return any(marker in lowered for marker in _INTERSTITIAL_TITLE_MARKERS)
+
+
+def playwright_challenge_visible(page: Any) -> bool:
+    """邮箱提交后是否已经落到整页 Cloudflare 验证。
+
+    仍在 chatgpt.com/auth/login 时只看地址，不读 title，也不扫 frame。
+    那段 SPA 过渡里 locator / evaluate 会把 Camoufox 内容进程打崩。
+    """
+    try:
+        url = str(getattr(page, "url", "") or "")
+    except Exception:
+        url = ""
+    if interstitial_url(url):
+        return True
+    lowered = url.lower()
+    if "chatgpt.com" in lowered and "/auth/login" in lowered:
+        return False
+    try:
+        title = str(page.title() or "")
+    except Exception:
+        title = ""
+    if interstitial_title(title):
+        return True
+    try:
+        return _turnstile_frame(page) is not None
+    except Exception:
+        return False
 
 
 def token_ready(token: str | None) -> bool:
@@ -197,20 +248,18 @@ def cloudflare_interstitial(target: Any) -> bool:
             url = str(getattr(page, "url", "") or "").lower()
         except Exception:
             url = ""
-        if "__cf_chl" in url or "/cdn-cgi/challenge" in url:
+        if interstitial_url(url):
             return True
         try:
-            title = str(page.title() or "").lower()
+            title = str(page.title() or "")
         except Exception:
             title = ""
-        if "just a moment" in title or "attention required" in title:
-            return True
-        return False
+        return interstitial_title(title)
     try:
-        current = str(getattr(target, "current_url", "") or "").lower()
+        current = str(getattr(target, "current_url", "") or "")
     except Exception:
         current = ""
-    if "__cf_chl" in current or "/cdn-cgi/challenge" in current:
+    if interstitial_url(current):
         return True
     try:
         return bool(target.execute_script("return (" + _INTERSTITIAL_JS + ");"))

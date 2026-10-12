@@ -150,6 +150,17 @@ class CloakElement:
         except Exception:
             return None
 
+    @property
+    def text(self) -> str:
+        """对齐 Selenium WebElement.text。读失败时返回空串，避免调用方把点击一起丢掉。"""
+        try:
+            value = self._eval(
+                r"el => String((el && (el.innerText || el.textContent)) || '').replace(/\s+/g, ' ').trim()"
+            )
+        except Exception:
+            return ""
+        return str(value or "")
+
 
 class _SwitchTo:
     def __init__(self, driver: "CloakSeleniumDriver"):

@@ -15,8 +15,10 @@ from unittest.mock import patch
 from core.cloakbrowser_driver import CloakElement, CloakSeleniumDriver
 from core.roxy_registration import (
     _click_continue_with_password_if_present,
+    _click_resend_email_otp,
     _fill_password_page_if_present,
     _is_email_verification_page,
+    _type_otp,
     _wait_email_submit_next_state,
 )
 
@@ -166,7 +168,21 @@ class ElementLikeTests(unittest.TestCase):
         self.assertTrue(_is_element_like(_RecordingElement()))
         self.assertFalse(_is_element_like({}))
         self.assertFalse(_is_element_like(None))
-        self.assertFalse(_is_element_like({"ok": True}))
+
+    def test_cloak_element_text_reads_inner_text_and_swallows_evaluate_errors(self):
+        class _Handle:
+            def __init__(self, value):
+                self.value = value
+
+            def evaluate(self, expression, arg=None):
+                if self.value is None:
+                    raise RuntimeError("evaluate failed")
+                return self.value
+
+        visible = CloakElement(page=object(), handle=_Handle("Resend email"))
+        broken = CloakElement(page=object(), handle=_Handle(None))
+        self.assertEqual(visible.text, "Resend email")
+        self.assertEqual(broken.text, "")
 
 
 class ContinueWithPasswordTests(unittest.TestCase):
@@ -713,6 +729,447 @@ class PasswordPageTakesPrecedenceTests(unittest.TestCase):
         self.assertEqual(state, "password")
         state_fn.assert_not_called()
         token_fn.assert_not_called()
+
+    def test_playwright_stuck_login_email_presses_enter_without_page_js(self):
+        presses = []
+
+        class _Page:
+            def __init__(self):
+                self.url = "https://chatgpt.com/auth/login?email=user%40example.com"
+
+            def locator(self, selector):
+                page = self
+
+                class _Box:
+                    first = None
+
+                    def count(self):
+                        raise AssertionError(f"locator.count must not run after submit: {selector}")
+
+                    def press(self, key, timeout=None):
+                        presses.append(key)
+                        page.url = "https://auth.openai.com/email-verification"
+
+                box = _Box()
+                box.first = box
+                return box
+
+            def wait_for_url(self, *args, **kwargs):
+                raise TimeoutError("stuck")
+
+            def wait_for_load_state(self, *args, **kwargs):
+                return None
+
+        class _Driver:
+            def __init__(self):
+                self.page = _Page()
+
+            @property
+            def current_url(self):
+                return self.page.url
+
+        clock = {"t": 1000.0}
+
+        def fake_time():
+            return clock["t"]
+
+        def fake_sleep(seconds):
+            clock["t"] += float(seconds)
+
+        with patch("core.roxy_registration.time.time", fake_time), \
+             patch("core.roxy_registration.time.sleep", fake_sleep), \
+             patch("core.roxy_registration._email_input_value_state") as state_fn, \
+             patch("core.roxy_registration._settle_cloudflare") as settle:
+            state = _wait_email_submit_next_state(_Driver(), "user@example.com", timeout=8)
+        self.assertEqual(presses, ["Enter"])
+        self.assertEqual(state, "otp")
+        state_fn.assert_not_called()
+        settle.assert_not_called()
+
+    def test_wait_next_state_clicks_auth_security_verification(self):
+        class _Page:
+            def __init__(self):
+                self.url = "https://auth.openai.com/"
+                self.title_calls = 0
+
+            def title(self):
+                self.title_calls += 1
+                return getattr(self, "_title", "Performing security verification")
+
+            def wait_for_url(self, *args, **kwargs):
+                raise TimeoutError("challenge")
+
+            def wait_for_load_state(self, *args, **kwargs):
+                return None
+
+        class _Driver:
+            def __init__(self):
+                self.page = _Page()
+
+            @property
+            def current_url(self):
+                return self.page.url
+
+        driver = _Driver()
+
+        def settle(target, timeout=20.0, poke=False):
+            self.assertGreater(timeout, 0)
+            self.assertFalse(poke)
+            target.page.url = "https://auth.openai.com/email-verification"
+            target.page._title = "Enter code"
+            return "token"
+
+        with patch("core.roxy_registration.time.sleep"), \
+             patch("core.roxy_registration._email_input_value_state") as state_fn, \
+             patch("core.roxy_registration._settle_cloudflare", side_effect=settle):
+            state = _wait_email_submit_next_state(driver, "user@example.com", timeout=5)
+        self.assertEqual(state, "otp")
+        self.assertGreater(driver.page.title_calls, 0)
+        state_fn.assert_not_called()
+
+    def test_wait_next_state_clicks_when_challenge_frame_is_present(self):
+        class _Frame:
+            url = "https://challenges.cloudflare.com/cdn-cgi/challenge-platform/turnstile/if/ov2"
+
+        class _Page:
+            def __init__(self):
+                self.url = "https://auth.openai.com/api/accounts/authorize"
+                self.frames = [_Frame()]
+
+            def title(self):
+                return ""
+
+            def wait_for_url(self, *args, **kwargs):
+                raise TimeoutError("challenge")
+
+            def wait_for_load_state(self, *args, **kwargs):
+                return None
+
+        driver_page = _Page()
+
+        class _Driver:
+            page = driver_page
+
+            @property
+            def current_url(self):
+                return driver_page.url
+
+        def settle(target, timeout=20.0, poke=False):
+            target.page.frames = []
+            target.page.url = "https://auth.openai.com/create-account/password"
+            return "token"
+
+        with patch("core.roxy_registration.time.sleep"), \
+             patch("core.roxy_registration._settle_cloudflare", side_effect=settle):
+            state = _wait_email_submit_next_state(_Driver(), "user@example.com", timeout=5)
+        self.assertEqual(state, "password")
+
+    def test_wait_next_state_does_not_treat_challenge_as_otp(self):
+        class _Frame:
+            url = "https://challenges.cloudflare.com/cdn-cgi/challenge-platform/turnstile/if/ov2"
+
+        class _Page:
+            def __init__(self):
+                self.url = "https://auth.openai.com/email-verification"
+                self.frames = [_Frame()]
+                self.cleared = False
+
+            def title(self):
+                if self.cleared:
+                    return "Create password"
+                return "Performing security verification"
+
+            def wait_for_url(self, *args, **kwargs):
+                raise TimeoutError("challenge")
+
+            def wait_for_load_state(self, *args, **kwargs):
+                return None
+
+        class _Driver:
+            def __init__(self):
+                self.page = _Page()
+
+            @property
+            def current_url(self):
+                return self.page.url
+
+        def settle(target, timeout=20.0, poke=False):
+            target.page.frames = []
+            target.page.cleared = True
+            target.page.url = "https://auth.openai.com/create-account/password"
+            return "token"
+
+        with patch("core.roxy_registration.time.sleep"), \
+             patch("core.roxy_registration._settle_cloudflare", side_effect=settle) as settle_mock:
+            state = _wait_email_submit_next_state(_Driver(), "user@example.com", timeout=5)
+        self.assertEqual(state, "password")
+        settle_mock.assert_called()
+
+    def test_type_otp_clicks_german_cloudflare_before_inputs(self):
+        class _Frame:
+            url = "https://challenges.cloudflare.com/cdn-cgi/challenge-platform/turnstile/if/ov2"
+
+        class _Page:
+            def __init__(self):
+                self.url = "https://auth.openai.com/email-verification"
+                self.frames = [_Frame()]
+                self.cleared = False
+
+            def title(self):
+                if self.cleared:
+                    return "Enter the code"
+                return "Sicherheitsüberprüfung wird durchgeführt"
+
+        class _Input:
+            def is_displayed(self):
+                return True
+
+            def is_enabled(self):
+                return True
+
+            def get_attribute(self, name):
+                return {"autocomplete": "one-time-code", "name": "code"}.get(name, "")
+
+        class _Driver:
+            def __init__(self):
+                self.page = _Page()
+                self.current_url = self.page.url
+
+            def find_elements(self, by, selector):
+                if not self.page.cleared:
+                    return []
+                if "one-time-code" in selector:
+                    return [_Input()]
+                return []
+
+            def execute_script(self, script, *args):
+                return {"url": self.current_url, "title": "", "inputs": [], "buttons": [], "errors": [], "text": ""}
+
+        driver = _Driver()
+
+        def settle(target, timeout=20.0, poke=False):
+            target.page.frames = []
+            target.page.cleared = True
+            return "token"
+
+        with patch("core.roxy_registration.time.sleep"), \
+             patch("core.roxy_registration._human_type_text") as type_text, \
+             patch("core.roxy_registration._settle_cloudflare", side_effect=settle) as settle_mock:
+            _type_otp(driver, "784627")
+        settle_mock.assert_called()
+        type_text.assert_called_once()
+        self.assertEqual(type_text.call_args.args[2], "784627")
+
+    def test_password_flow_clears_cloudflare_on_verification_url(self):
+        class _Frame:
+            url = "https://challenges.cloudflare.com/cdn-cgi/challenge-platform/turnstile/if/ov2"
+
+        class _Page:
+            def __init__(self):
+                self.url = "https://auth.openai.com/email-verification"
+                self.frames = [_Frame()]
+                self.cleared = False
+
+            def title(self):
+                if self.cleared:
+                    return "Check your inbox"
+                return "Sicherheitsüberprüfung wird durchgeführt"
+
+        class _Driver:
+            def __init__(self):
+                self.page = _Page()
+                self.current_url = self.page.url
+
+            def execute_script(self, script, *args):
+                if self.page.cleared:
+                    return {"ok": False, "reason": "missing_continue_with_password", "url": self.current_url, "inputs": [], "buttons": [], "text": "code"}
+                return {"url": self.current_url, "inputs": [], "buttons": [], "errors": [], "text": ""}
+
+        driver = _Driver()
+
+        def settle(target, timeout=20.0, poke=False):
+            target.page.frames = []
+            target.page.cleared = True
+            return "token"
+
+        with patch("core.roxy_registration.time.sleep"), \
+             patch("core.roxy_registration._settle_cloudflare", side_effect=settle) as settle_mock:
+            result = _fill_password_page_if_present(driver, "user@example.com", timeout=3)
+        self.assertIsNone(result)
+        settle_mock.assert_called()
+
+    def test_password_link_is_polled_before_giving_up(self):
+        class _Driver:
+            def __init__(self):
+                self.current_url = "https://auth.openai.com/email-verification"
+                self.calls = 0
+                self.phase = "otp"
+
+            def execute_script(self, script, *args):
+                s = script or ""
+                if "continuewithpassword" in s or "isPasswordCreate" in s:
+                    self.calls += 1
+                    if self.calls >= 3 and self.phase == "otp":
+                        self.phase = "password"
+                        self.current_url = "https://auth.openai.com/create-account/password"
+                        return {
+                            "ok": True,
+                            "reason": "clicked_continue_with_password_in_page",
+                            "href": "/create-account/password",
+                            "text": "Continue with password",
+                        }
+                    return {"ok": False, "reason": "missing_continue_with_password"}
+                if "one-time-code" in s and "buttons" in s:
+                    return {
+                        "url": self.current_url,
+                        "inputs": [{"autocomplete": "one-time-code", "name": "code"}] if self.phase == "done" else [],
+                        "buttons": [],
+                        "errors": [],
+                        "text": "",
+                    }
+                if "autocomplete" in s and "inputs" in s and "forms" in s:
+                    if self.phase == "password":
+                        return {
+                            "url": self.current_url,
+                            "inputs": [{"type": "password", "name": "password", "visible": True, "autocomplete": "new-password"}],
+                            "forms": [{"action": ""}],
+                            "buttons": [{"type": "submit", "visible": True, "disabled": False}],
+                        }
+                    if self.phase == "done":
+                        return {
+                            "url": self.current_url,
+                            "inputs": [{"type": "text", "name": "code", "visible": True, "autocomplete": "one-time-code"}],
+                            "forms": [{"action": ""}],
+                            "buttons": [{"type": "submit", "visible": True, "disabled": False}],
+                        }
+                    return {
+                        "url": self.current_url,
+                        "inputs": [],
+                        "forms": [{"action": ""}],
+                        "buttons": [],
+                    }
+                if "password_targets" in s or ('input[type="password"]' in s and "missing_password_input" in s):
+                    return {
+                        "ok": True,
+                        "reason": "password_targets",
+                        "input": _RecordingElement("password"),
+                        "button": _RecordingElement("submit"),
+                    }
+                if "enabled_submit_target" in s or "missing_enabled_submit" in s:
+                    self.phase = "done"
+                    self.current_url = "https://auth.openai.com/email-verification"
+                    return {
+                        "ok": True,
+                        "reason": "enabled_submit_target",
+                        "button": _RecordingElement("submit"),
+                        "text": "Continue",
+                        "type": "submit",
+                        "dd": "Continue",
+                        "ariaDisabled": "",
+                    }
+                if "passwordless" in s:
+                    return {"ok": False, "reason": "missing_passwordless_button"}
+                return {}
+
+        driver = _Driver()
+        with patch("core.roxy_registration.human_delay"), \
+             patch("core.roxy_registration.time.sleep"), \
+             patch("core.roxy_registration._browser_actions_enabled", return_value=False), \
+             patch("core.roxy_registration._registration_password", return_value="Aa1!Bb2@Cc3#"), \
+             patch("core.roxy_registration._has_access_token", return_value=False), \
+             patch("core.roxy_registration._human_click"), \
+             patch("core.roxy_registration._human_type_text"):
+            password = _fill_password_page_if_present(driver, "user@example.com", timeout=3)
+        self.assertEqual(password, "Aa1!Bb2@Cc3#")
+        self.assertGreaterEqual(driver.calls, 3)
+
+
+class ResendEmailOtpTests(unittest.TestCase):
+    def test_resend_clicks_handle_without_text_attribute(self):
+        class _Button:
+            def get_attribute(self, name):
+                return {"value": "resend"}.get(name)
+
+            def click(self):
+                return None
+
+        class _Driver:
+            def __init__(self):
+                self.current_url = "https://auth.openai.com/email-verification"
+
+            def execute_script(self, script, *args):
+                if "ariaInvalid" in script or "document.title" in script:
+                    return {
+                        "url": self.current_url,
+                        "title": "Check your inbox - OpenAI",
+                        "inputs": [{"name": "code", "autocomplete": "one-time-code"}],
+                        "buttons": [{"value": "resend", "text": "Resend email", "disabled": False}],
+                        "errors": [],
+                        "text": "Check your inbox",
+                    }
+                return _Button()
+
+        clicked = []
+
+        def _click(driver, el, label=""):
+            clicked.append(label)
+            self.assertFalse(hasattr(el, "text"))
+
+        with patch("core.roxy_registration.time.sleep"), \
+             patch("core.roxy_registration._cloudflare_page_visible", return_value=False), \
+             patch("core.roxy_registration._browser_actions_enabled", return_value=False), \
+             patch("core.roxy_registration._human_click", side_effect=_click):
+            result = _click_resend_email_otp(_Driver(), timeout=3)
+        self.assertTrue(result.get("ok"), result)
+        self.assertEqual(result.get("text"), "resend")
+        self.assertEqual(clicked, ["resend_otp"])
+
+    def test_single_blank_snapshot_does_not_reload(self):
+        class _Button:
+            def get_attribute(self, name):
+                return {"value": "resend"}.get(name)
+
+        class _Driver:
+            def __init__(self):
+                self.current_url = "https://auth.openai.com/email-verification"
+                self.reads = 0
+                self.reloads = 0
+
+            def execute_script(self, script, *args):
+                if "ariaInvalid" in script or "document.title" in script:
+                    self.reads += 1
+                    if self.reads == 1:
+                        return {
+                            "url": self.current_url,
+                            "title": "",
+                            "inputs": [],
+                            "buttons": [],
+                            "errors": [],
+                            "text": "",
+                        }
+                    return {
+                        "url": self.current_url,
+                        "title": "Check your inbox - OpenAI",
+                        "inputs": [{"name": "code"}],
+                        "buttons": [{"value": "resend", "text": "Resend email"}],
+                        "errors": [],
+                        "text": "Check your inbox",
+                    }
+                return _Button()
+
+        driver = _Driver()
+
+        def _reload(target):
+            driver.reloads += 1
+
+        with patch("core.roxy_registration.time.sleep"), \
+             patch("core.roxy_registration._cloudflare_page_visible", return_value=False), \
+             patch("core.roxy_registration._browser_actions_enabled", return_value=False), \
+             patch("core.roxy_registration._reload_current_page", side_effect=_reload), \
+             patch("core.roxy_registration._human_click"):
+            result = _click_resend_email_otp(driver, timeout=3)
+        self.assertTrue(result.get("ok"), result)
+        self.assertEqual(driver.reloads, 0)
 
 
 class ContinueWithPasswordMatcherTests(unittest.TestCase):

@@ -1157,19 +1157,42 @@ def _is_email_login_page_still_present(driver) -> bool:
     return bool(state.get("inputs"))
 
 
+def _next_state_from_auth_url(url: str) -> str:
+    """只根据地址判断是否已经离开邮箱页。不要为此去执行页面脚本。"""
+    lower = str(url or "").lower()
+    if "/log-in/password" in lower:
+        return "login_password"
+    if any(token in lower for token in ("/create-account/password", "/signup/password", "/u/signup/password")):
+        return "password"
+    if any(token in lower for token in ("email-verification", "/otp", "verify-email")):
+        return "otp"
+    return ""
+
+
 def _email_login_form_present(driver) -> bool:
     """邮箱框还在就说明仍停在登录页。提交中的输入框是 disabled，不能因此当成页面已关闭。"""
     page = getattr(driver, "page", None)
     if page is not None:
+        # Camoufox 在邮箱提交后的导航里执行 locator/evaluate_handle 会关掉标签页，
+        # 失败截图也就来不及保存。Playwright 页面只看 URL。
         try:
-            count = page.locator(
-                'input[type="email"], input[name="email"], input[name="username"]'
-            ).count()
-            if int(count or 0) > 0:
-                return True
+            url = str(getattr(page, "url", "") or "")
         except Exception:
-            pass
+            return False
+        if _next_state_from_auth_url(url):
+            return False
+        return "/auth/login" in url.lower()
     return _is_email_login_page_still_present(driver)
+
+
+def _recover_email_submit_playwright(page, email: str) -> dict:
+    """停在 login?email= 时用键盘补交一次。不用 execute_script / evaluate_handle。"""
+    try:
+        box = page.locator('input[type="email"], input[name="email"], input[name="username"]').first
+        box.press("Enter", timeout=2000)
+        return {"ok": True, "reason": "playwright_enter", "email": email}
+    except Exception as exc:
+        return {"ok": False, "reason": f"{type(exc).__name__}: {exc}"}
 
 
 def _wait_email_submit_next_state(driver, email: str, timeout: int = 18) -> str:
@@ -1182,6 +1205,8 @@ def _wait_email_submit_next_state(driver, email: str, timeout: int = 18) -> str:
     这里对 email_cleared 做去抖：只记录并继续观察几秒；若期间进入
     password/otp/login_password/logged_in 则按真实状态返回，持续清空才让上层重试。
     """
+    from core.turnstile import playwright_challenge_visible
+
     end = time.time() + timeout
     last = None
     cleared_seen_at: float | None = None
@@ -1206,8 +1231,9 @@ def _wait_email_submit_next_state(driver, email: str, timeout: int = 18) -> str:
                 pass
     while time.time() < end:
         if page is not None:
-            # Camoufox/Firefox：提交后 SPA 会加载 conversation-small，evaluate_handle
-            # 会把内容进程打崩。这里只看 URL 和 locator，不跑 JS。
+            # Camoufox/Firefox：提交后 SPA 会加载 conversation-small。
+            # 这时 Page.evaluate_handle（以及 locator.count）会把内容进程打崩。
+            # 还在 chatgpt.com/auth/login 时只读 page.url；离开该页后再认 Cloudflare。
             try:
                 url = str(getattr(page, "url", "") or "")
             except Exception as exc:
@@ -1215,31 +1241,35 @@ def _wait_email_submit_next_state(driver, email: str, timeout: int = 18) -> str:
                     logger.warning("%s 邮箱提交后页面已关闭：%s", _log_prefix(driver), exc)
                     return "unknown"
                 raise
+            # 整页 Cloudflare 会停在 email-verification 这个地址上。先点验证，
+            # 不能因为地址像验证码页就返回 otp。
+            if playwright_challenge_visible(page):
+                logger.info(
+                    "%s 邮箱提交后出现 Cloudflare 验证页，开始处理：url=%s",
+                    _log_prefix(driver), url[:180],
+                )
+                remaining = max(1.0, end - time.time())
+                _settle_cloudflare(driver, timeout=min(25.0, remaining))
+                time.sleep(0.4)
+                continue
+            arrived = _next_state_from_auth_url(url)
+            if arrived:
+                return arrived
             lower = url.lower()
-            if "/log-in/password" in lower:
-                return "login_password"
-            if any(token in lower for token in ("/create-account/password", "/signup/password", "/u/signup/password")):
-                return "password"
             submitted = "/auth/login" in lower and "email=" in lower
+            now = time.time()
             if submitted and cleared_seen_at is None:
-                cleared_seen_at = time.time()
+                cleared_seen_at = now
                 logger.info("%s 邮箱已提交，仍在 login?email= 中间页，继续等密码/验证码：url=%s", _log_prefix(driver), url[:180])
-            try:
-                has_password = int(page.locator('input[type="password"]').count() or 0) > 0
-                has_otp = int(page.locator(
-                    'input[autocomplete="one-time-code"], input[name="code"], input[inputmode="numeric"]'
-                ).count() or 0) > 0
-            except Exception as exc:
-                if "TargetClosed" in type(exc).__name__ or "closed" in str(exc).lower():
-                    logger.warning("%s 邮箱提交后页面已关闭：%s", _log_prefix(driver), exc)
-                    return "unknown"
-                has_password = False
-                has_otp = False
-            if has_password:
-                return "login_password" if "log-in" in lower else "password"
-            if has_otp or any(token in lower for token in ("email-verification", "/otp", "verify-email")):
-                return "otp"
-            _settle_cloudflare(driver, poke=True)
+            if (
+                submitted
+                and not cleared_recover_done
+                and cleared_seen_at is not None
+                and now - cleared_seen_at >= 2.0
+            ):
+                cleared_recover_done = True
+                recover = _recover_email_submit_playwright(page, email)
+                logger.info("%s 邮箱提交后仍停留在 login?email，用 Enter 补交一次：%s", _log_prefix(driver), recover)
             time.sleep(0.5)
             continue
         try:
@@ -1344,6 +1374,8 @@ def _submit_email_and_wait_next(
             stuck_url = str(getattr(getattr(driver, "page", None), "url", "") or getattr(driver, "current_url", "") or "")
         except Exception:
             stuck_url = ""
+        if stuck_url:
+            last_state = {"url": stuck_url, "before_submit": last_state}
         if "/auth/login" in stuck_url and "email=" in stuck_url:
             logger.warning("%s 已停在 login?email= 中间页，不再反复重填：url=%s", _log_prefix(driver), stuck_url[:180])
             last_state = last_state or {"url": stuck_url}
@@ -1353,9 +1385,117 @@ def _submit_email_and_wait_next(
     raise RuntimeError(f"邮箱提交后未进入密码页/验证码页，最后状态={last_state}")
 
 
+def _cloudflare_page_visible(driver) -> bool:
+    """当前页是不是整页 Cloudflare。没有 Playwright page 时退回 Selenium 检测。"""
+    page = getattr(driver, "page", None)
+    if page is not None:
+        from core.turnstile import playwright_challenge_visible
+        try:
+            if playwright_challenge_visible(page):
+                return True
+        except Exception:
+            pass
+        return False
+    try:
+        from core.turnstile import cloudflare_interstitial
+        return bool(cloudflare_interstitial(driver))
+    except Exception:
+        return False
+
+
+def _reload_current_page(driver) -> None:
+    page = getattr(driver, "page", None)
+    reload = getattr(page, "reload", None)
+    if callable(reload):
+        try:
+            reload(wait_until="domcontentloaded", timeout=15000)
+            return
+        except TypeError:
+            reload()
+            return
+        except Exception as exc:
+            logger.warning("%s 刷新验证码页失败：%s", _log_prefix(driver), exc)
+            return
+    try:
+        url = str(getattr(driver, "current_url", "") or "")
+    except Exception:
+        url = ""
+    if url:
+        driver.get(url)
+
+
+def _verification_document_blank(driver) -> bool:
+    """验证码地址已经打开，但文档没有标题、正文、输入框和按钮。"""
+    try:
+        url = str(getattr(getattr(driver, "page", None), "url", "") or getattr(driver, "current_url", "") or "")
+    except Exception:
+        url = ""
+    if "email-verification" not in url.lower():
+        return False
+    state = _email_otp_page_state(driver)
+    if state.get("error"):
+        return False
+    return not (
+        state.get("inputs")
+        or state.get("buttons")
+        or str(state.get("text") or "").strip()
+        or str(state.get("title") or "").strip()
+    )
+
+
+def _has_visible_otp_inputs(driver, code_length: int) -> bool:
+    from selenium.webdriver.common.by import By
+
+    for selector in (
+        "input[autocomplete='one-time-code']",
+        "input[name='code']",
+        "input[inputmode='numeric']",
+        "input[type='tel']",
+    ):
+        els = [e for e in driver.find_elements(By.CSS_SELECTOR, selector) if _visible(e)]
+        if len(els) == 1:
+            return True
+    boxes = [e for e in driver.find_elements(By.CSS_SELECTOR, "input") if _visible(e)]
+    numeric = 0
+    for e in boxes:
+        attrs = " ".join(
+            str(e.get_attribute(k) or "")
+            for k in ("inputmode", "autocomplete", "aria-label", "name", "id", "type")
+        ).lower()
+        if any(token in attrs for token in ("numeric", "one-time", "code", "otp", "tel")):
+            numeric += 1
+    return numeric >= code_length
+
+
+def _wait_out_cloudflare_for_otp(driver, code_length: int, timeout: float = 22) -> None:
+    """填验证码前先处理整页 Cloudflare；文档是空白时刷新一次。"""
+    end = time.time() + timeout
+    reloaded = False
+    while time.time() < end:
+        if _cloudflare_page_visible(driver):
+            logger.info("%s 填写验证码前出现 Cloudflare 验证页，开始处理", _log_prefix(driver))
+            remaining = max(1.0, end - time.time())
+            _settle_cloudflare(driver, timeout=min(20.0, remaining))
+            time.sleep(0.4)
+            continue
+        try:
+            if _has_visible_otp_inputs(driver, code_length):
+                return
+        except Exception:
+            pass
+        if not reloaded and _verification_document_blank(driver):
+            reloaded = True
+            logger.warning("%s 验证码页文档为空，刷新一次后再找输入框", _log_prefix(driver))
+            _reload_current_page(driver)
+            time.sleep(1.0)
+            continue
+        time.sleep(0.4)
+
+
 def _type_otp(driver, code: str) -> None:
     from selenium.webdriver.common.by import By
 
+    _wait_out_cloudflare_for_otp(driver, len(code))
     # 单输入框
     for selector in [
         "input[autocomplete='one-time-code']",
@@ -1449,11 +1589,54 @@ def _clear_otp_inputs(driver) -> None:
         pass
 
 
+def _safe_element_label(el) -> str:
+    """读取按钮标签。CloakElement 以前没有 .text，读标签失败不能挡住点击。"""
+    try:
+        raw = el.text
+    except Exception:
+        raw = ""
+    if str(raw or "").strip():
+        return str(raw).strip()
+    if not callable(getattr(el, "get_attribute", None)):
+        return ""
+    for name in ("value", "data-dd-action-name", "aria-label"):
+        try:
+            value = el.get_attribute(name)
+        except Exception:
+            value = None
+        if value:
+            return str(value).strip()
+    return ""
+
+
 def _click_resend_email_otp(driver, timeout: int = 20) -> dict:
     """点击重新发送邮箱验证码。优先按 DOM 属性识别，文本仅兜底。"""
     end = time.time() + timeout
     last = None
+    reloaded = False
+    blank_streak = 0
     while time.time() < end:
+        if _cloudflare_page_visible(driver):
+            logger.info("%s[OTP] 重新发送前出现 Cloudflare 验证页，开始处理", _log_prefix(driver))
+            _settle_cloudflare(driver, timeout=min(20.0, max(1.0, end - time.time())))
+            time.sleep(0.4)
+            blank_streak = 0
+            continue
+        if _verification_document_blank(driver):
+            blank_streak += 1
+            # 单次空快照可能是脚本读早了。确认一次再刷新，避免把已渲染的收件箱页刷进 Cloudflare。
+            if blank_streak < 2:
+                time.sleep(0.6)
+                continue
+            if not reloaded:
+                reloaded = True
+                blank_streak = 0
+                logger.warning("%s[OTP] 验证码页文档为空，刷新一次后再找重新发送", _log_prefix(driver))
+                _reload_current_page(driver)
+                time.sleep(1.0)
+                continue
+        else:
+            blank_streak = 0
         try:
             btn = driver.execute_script(r"""
             const visible = el => !!(el && (el.offsetWidth || el.offsetHeight || el.getClientRects().length));
@@ -1473,7 +1656,7 @@ def _click_resend_email_otp(driver, timeout: int = 20) -> dict:
             return candidates.find(el => enabled(el) && /resend|send\s+(?:a\s+)?new\s+code|send\s+again|重新发送|重新发送电子邮件|重发|再次发送|再送信|新しい|届かない/.test((el.innerText || el.textContent || '').toLowerCase())) || null;
             """)
             if btn:
-                text = str(btn.text or btn.get_attribute('value') or btn.get_attribute('data-dd-action-name') or '').strip()
+                text = _safe_element_label(btn)
                 _human_click(driver, btn, label="resend_otp")
                 logger.info("%s[OTP] 已点击重新发送验证码按钮：%s", _log_prefix(driver), text or '-')
                 time.sleep(random.uniform(1.1, 2.4) if _browser_actions_enabled() else 1.5)
@@ -2138,16 +2321,30 @@ def _click_password_submit_in_page(driver) -> dict:
         return {"ok": False, "reason": f"{type(exc).__name__}: {exc}"}
 
 
+_PASSWORD_LINK_HYDRATION_POLLS = 6
+
+
 def _fill_password_page_if_present(driver, email: str, timeout: int = 25) -> str | None:
     """邮箱提交后兼容 create-account/password。返回本次设置的 OpenAI 账号密码；未遇到密码页返回 None。"""
     end = time.time() + timeout
     last = {}
+    password_link_misses = 0
     while time.time() < end:
         if _is_email_verification_page(driver):
+            if _cloudflare_page_visible(driver):
+                logger.info("%s 邮箱验证码地址上出现 Cloudflare 验证页，先处理再继续：email=%s", _log_prefix(driver), email)
+                _settle_cloudflare(driver, timeout=min(20.0, max(1.0, end - time.time())))
+                time.sleep(0.4)
+                continue
             result = _click_continue_with_password_if_present(driver)
             if result.get("ok"):
                 logger.info("%s 邮箱验证码页已点击“使用密码继续”：email=%s detail=%s", _log_prefix(driver), email, result)
+                password_link_misses = 0
                 time.sleep(0.8)
+                continue
+            password_link_misses += 1
+            if password_link_misses < _PASSWORD_LINK_HYDRATION_POLLS:
+                time.sleep(0.5)
                 continue
             logger.info("%s 已在邮箱验证码页，但未找到“使用密码继续”按钮：detail=%s", _log_prefix(driver), result)
             return None

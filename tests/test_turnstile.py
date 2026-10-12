@@ -7,6 +7,7 @@ from core.turnstile import (
     TOKEN_MIN_LENGTH,
     CloudflareChallengeError,
     click_turnstile,
+    cloudflare_interstitial,
     ensure_turnstile,
     should_retry_cf,
     sync_turnstile,
@@ -125,6 +126,26 @@ class TurnstileTests(unittest.TestCase):
         with patch("core.turnstile.time.sleep"):
             with self.assertRaises(CloudflareChallengeError):
                 sync_turnstile(page, timeout=0.01)
+
+    def test_security_verification_title_is_interstitial(self):
+        page = _Page(title="Performing security verification", url="https://auth.openai.com/")
+        self.assertTrue(cloudflare_interstitial(page))
+
+    def test_german_security_verification_title_is_interstitial(self):
+        page = _Page(title="Sicherheitsüberprüfung wird durchgeführt", url="https://auth.openai.com/email-verification")
+        self.assertTrue(cloudflare_interstitial(page))
+
+    def test_security_verification_page_clicks_checkbox(self):
+        frame = _Frame("https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/b/turnstile/if/ov2/av0/rcv")
+        page = _Page(
+            frames=[frame],
+            title="Performing security verification",
+            url="https://auth.openai.com/",
+        )
+        with patch("core.turnstile.time.sleep"):
+            with self.assertRaises(CloudflareChallengeError):
+                sync_turnstile(page, timeout=0.01)
+        self.assertTrue(frame.clicks)
 
     def test_selenium_clicks_iframe_from_center(self):
         element = MagicMock()
