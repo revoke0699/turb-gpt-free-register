@@ -27,7 +27,7 @@ class _Frame:
     def evaluate(self, script):
         script = str(script)
         if "checkbox" in script:
-            return {"text": self.text, "checked": self.checked}
+            return {"text": self.text, "checked": self.checked, "unchecked": getattr(self, "unchecked", False)}
         if "innerText" in script:
             return self.text
         return {"w": 300, "h": self.height}
@@ -64,12 +64,13 @@ class _Mouse:
 
 
 class _Page:
-    def __init__(self, frames=None, locators=None, title="", url="https://auth.openai.com/log-in"):
+    def __init__(self, frames=None, locators=None, title="", url="https://auth.openai.com/log-in", body_text=""):
         self.frames = frames or []
         self.mouse = _Mouse()
         self.locators = locators or {}
         self._title = title
         self.url = url
+        self.body_text = body_text
         self.evaluated = []
         self.context = MagicMock()
         self.context.cookies.return_value = []
@@ -82,6 +83,8 @@ class _Page:
 
     def evaluate(self, script, arg=None):
         self.evaluated.append((script, arg))
+        if arg is None and "document.body" in str(script):
+            return self.body_text
         return TOKEN_MIN_LENGTH if arg else ""
 
 
@@ -191,6 +194,86 @@ class TurnstileTests(unittest.TestCase):
         page = _Page(frames=[frame])
         self.assertTrue(click_turnstile(page))
         self.assertEqual(frame.clicks[0][0], "body")
+
+    def test_just_a_moment_title_still_clicks_security_verification_widget(self):
+        """Job 765：标题仍是 Just a moment...，页面已经是未勾选的验证框。
+
+        旧的 cf_clearance 盖不住这一页，必须点一次。
+        """
+        frame = _Frame("https://challenges.cloudflare.com/cdn-cgi/challenge-platform/turnstile")
+        page = _Page(
+            frames=[frame],
+            title="Just a moment...",
+            url="https://auth.openai.com/api/accounts/authorize",
+            body_text=(
+                "auth.openai.com\n"
+                "Performing security verification\n"
+                "This website uses a security service to protect against malicious bots. "
+                "This page is displayed while the website verifies you are not a bot."
+            ),
+        )
+        page.context.cookies.return_value = [
+            {"name": "cf_clearance", "value": "from-chatgpt", "domain": ".chatgpt.com"},
+        ]
+        with patch("core.turnstile.time.sleep"):
+            with self.assertRaises(CloudflareChallengeError) as caught:
+                sync_turnstile(page, timeout=0.2)
+        self.assertEqual(len(frame.clicks), 1)
+        self.assertNotIn("cf_clearance", str(caught.exception))
+
+    def test_visible_unchecked_box_overrides_checked_flag(self):
+        frame = _Frame(
+            "https://challenges.cloudflare.com/cdn-cgi/challenge-platform/turnstile",
+            text="Verify you are human",
+            checked=True,
+        )
+        frame.unchecked = True
+        page = _Page(
+            frames=[frame],
+            title="Just a moment...",
+            url="https://auth.openai.com/api/accounts/authorize",
+        )
+        with patch("core.turnstile.time.sleep"):
+            with self.assertRaises(CloudflareChallengeError):
+                sync_turnstile(page, timeout=0.2)
+        self.assertEqual(len(frame.clicks), 1)
+
+    def test_failed_click_does_not_skip_later_checkbox(self):
+        frame = _Frame(
+            "https://challenges.cloudflare.com/cdn-cgi/challenge-platform/turnstile",
+            text="",
+        )
+        frame._tries = 0
+
+        def click(selector, position=None, timeout=None):
+            frame._tries += 1
+            if frame._tries == 1:
+                frame.text = "Verify you are human"
+                raise RuntimeError("widget not ready")
+            frame.clicks.append((selector, position, timeout))
+
+        frame.click = click
+        page = _Page(frames=[frame], title="", url="https://chatgpt.com/auth/login")
+        with patch("core.turnstile.time.sleep"):
+            with self.assertRaises(CloudflareChallengeError):
+                sync_turnstile(page, timeout=0.2)
+        self.assertEqual(len(frame.clicks), 1)
+
+    def test_security_page_spinner_inside_widget_is_not_clicked(self):
+        frame = _Frame(
+            "https://challenges.cloudflare.com/cdn-cgi/challenge-platform/turnstile",
+            text="Verifying...\nCloudflare",
+        )
+        page = _Page(
+            frames=[frame],
+            title="Just a moment...",
+            url="https://auth.openai.com/api/accounts/authorize",
+            body_text="Performing security verification",
+        )
+        with patch("core.turnstile.time.sleep"):
+            with self.assertRaises(CloudflareChallengeError):
+                sync_turnstile(page, timeout=0.2)
+        self.assertEqual(frame.clicks, [])
 
     def test_security_verification_page_clicks_checkbox(self):
         frame = _Frame("https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/b/turnstile/if/ov2/av0/rcv")

@@ -345,24 +345,54 @@ def fill_turnstile_token(target: Any, token: str) -> int:
         return len(token)
 
 
+_PAGE_TEXT_JS = """() => String((document.body && document.body.innerText) || '').slice(0, 500)"""
+
+_SECURITY_PAGE_MARKERS = (
+    "security verification",
+    "sicherheitsüberprüfung",
+    "sicherheitsuberprufung",
+    "正在验证您是否是真人",
+)
+
+# 只认看得见的复选框。隐藏的 checked input 不能把空框当成已经勾上。
 _FRAME_STATE_JS = """() => {
-  const text = String((document.body && document.body.innerText) || '').slice(0, 400);
-  const findBox = (root) => {
-    if (!root || !root.querySelector) return null;
-    const box = root.querySelector('input[type="checkbox"], [role="checkbox"]');
-    if (box) return box;
-    const nodes = root.querySelectorAll ? root.querySelectorAll('*') : [];
+  const chunks = [];
+  const boxes = [];
+  const addBox = (el) => {
+    if (el && boxes.indexOf(el) < 0) boxes.push(el);
+  };
+  const visit = (root) => {
+    if (!root || !root.querySelectorAll) return;
+    let nodes = [];
+    try { nodes = root.querySelectorAll('*'); } catch (e) { nodes = []; }
     for (const el of nodes) {
+      const type = String((el.getAttribute && el.getAttribute('type')) || '').toLowerCase();
+      const role = String((el.getAttribute && el.getAttribute('role')) || '').toLowerCase();
+      if (type === 'checkbox' || role === 'checkbox') addBox(el);
       if (el.shadowRoot) {
-        const found = findBox(el.shadowRoot);
-        if (found) return found;
+        try {
+          const shadowText = String(el.shadowRoot.textContent || '').trim();
+          if (shadowText) chunks.push(shadowText.slice(0, 400));
+        } catch (e) {}
+        visit(el.shadowRoot);
       }
     }
-    return null;
   };
-  const box = findBox(document);
-  const checked = !!(box && (box.checked || String(box.getAttribute('aria-checked') || '').toLowerCase() === 'true'));
-  return {text, checked};
+  try { chunks.push(String((document.body && document.body.innerText) || '').slice(0, 400)); } catch (e) {}
+  visit(document);
+  const visible = (el) => {
+    try {
+      const style = window.getComputedStyle ? getComputedStyle(el) : null;
+      if (style && (style.display === 'none' || style.visibility === 'hidden')) return false;
+      const r = el.getBoundingClientRect();
+      return !!(r && r.width > 2 && r.height > 2);
+    } catch (e) { return false; }
+  };
+  const isChecked = (el) => !!(el && (el.checked || String((el.getAttribute && el.getAttribute('aria-checked')) || '').toLowerCase() === 'true'));
+  const vis = boxes.filter(visible);
+  const unchecked = vis.some((el) => !isChecked(el));
+  const checked = vis.length > 0 && vis.every(isChecked);
+  return {text: chunks.join(' ').slice(0, 400), checked: checked && !unchecked, unchecked};
 }"""
 
 
@@ -373,9 +403,14 @@ def _frame_challenge_state(frame: Any) -> dict:
         return {"text": "", "checked": False}
     if isinstance(value, str):
         return {"text": value, "checked": False}
-    if isinstance(value, dict) and ("text" in value or "checked" in value):
-        return {"text": str(value.get("text") or ""), "checked": bool(value.get("checked"))}
-    return {"text": "", "checked": False}
+    if isinstance(value, dict) and ("text" in value or "checked" in value or "unchecked" in value):
+        unchecked = bool(value.get("unchecked"))
+        return {
+            "text": str(value.get("text") or ""),
+            "checked": bool(value.get("checked")) and not unchecked,
+            "unchecked": unchecked,
+        }
+    return {"text": "", "checked": False, "unchecked": False}
 
 
 def _frame_visible_text(frame: Any) -> str:
@@ -384,38 +419,77 @@ def _frame_visible_text(frame: Any) -> str:
 
 def _challenge_snapshot(target: Any) -> dict:
     page = playwright_page(target)
-    chunks: list[str] = []
+    frame_text = ""
+    page_body = ""
+    title = ""
     checked = False
+    unchecked = False
+    has_widget = False
     if page is not None:
         frame = _turnstile_frame(page)
+        has_widget = frame is not None
         if frame is not None:
             state = _frame_challenge_state(frame)
-            chunks.append(str(state.get("text") or ""))
+            frame_text = str(state.get("text") or "")
             checked = bool(state.get("checked"))
+            unchecked = bool(state.get("unchecked"))
         try:
-            chunks.append(str(page.title() or ""))
+            title = str(page.title() or "")
         except Exception:
-            pass
-    return {"text": "\n".join(chunks).lower(), "checked": checked}
+            title = ""
+        try:
+            page_body = str(page.evaluate(_PAGE_TEXT_JS) or "")
+        except Exception:
+            page_body = ""
+    page_text = "\n".join((title, page_body)).lower()
+    return {
+        "text": "\n".join((frame_text, title, page_body)).lower(),
+        "frame_text": frame_text.lower(),
+        "page_text": page_text,
+        "checked": checked,
+        "unchecked": unchecked,
+        "has_widget": has_widget,
+    }
+
+
+def _spinner_text(text: str) -> bool:
+    return any(marker in text for marker in _MANAGED_SPINNER_MARKERS)
+
+
+def _checkbox_text(text: str) -> bool:
+    return any(marker in text for marker in _CHECKBOX_MARKERS)
+
+
+def _security_widget_page(snap: dict) -> bool:
+    """外层是安全验证页，里面嵌着 Turnstile。标题经常仍是 Just a moment...。"""
+    if not snap.get("has_widget"):
+        return False
+    if not any(marker in str(snap.get("page_text") or "") for marker in _SECURITY_PAGE_MARKERS):
+        return False
+    frame_text = str(snap.get("frame_text") or "")
+    if frame_text and _spinner_text(frame_text) and not _checkbox_text(frame_text) and not snap.get("unchecked"):
+        return False
+    return True
 
 
 def managed_spinner(target: Any) -> bool:
     """Cloudflare 正在自动验证。这种页面没有复选框，等待即可。"""
-    text = _challenge_snapshot(target)["text"]
-    if not text:
+    snap = _challenge_snapshot(target)
+    if _checkbox_text(snap["text"]) or snap.get("unchecked") or _security_widget_page(snap):
         return False
-    if any(marker in text for marker in _CHECKBOX_MARKERS):
+    if not snap["text"]:
         return False
-    return any(marker in text for marker in _MANAGED_SPINNER_MARKERS)
+    return _spinner_text(snap["text"])
 
 
 def human_checkbox_challenge(target: Any) -> bool:
-    text = _challenge_snapshot(target)["text"]
-    return any(marker in text for marker in _CHECKBOX_MARKERS)
+    snap = _challenge_snapshot(target)
+    return _checkbox_text(snap["text"]) or bool(snap.get("unchecked")) or _security_widget_page(snap)
 
 
 def checkbox_checked(target: Any) -> bool:
-    return bool(_challenge_snapshot(target)["checked"])
+    snap = _challenge_snapshot(target)
+    return bool(snap.get("checked")) and not snap.get("unchecked")
 
 
 def _frame_click_point(frame: Any) -> tuple[float, float]:
@@ -496,7 +570,8 @@ def click_turnstile(target: Any, log: Callable[[str], None] | None = None) -> bo
 
 def _challenge_timeout(target: Any) -> None:
     clearance = _remember_clearance(target)
-    extra = "，已有 cf_clearance" if clearance else ""
+    # 上一页的 cf_clearance 不能代表这一页的复选框已经通过。
+    extra = "，已有 cf_clearance" if clearance and not human_checkbox_challenge(target) else ""
     raise CloudflareChallengeError(f"Cloudflare 验证未通过，请更换当前 proxy 后重试{extra}")
 
 
@@ -509,6 +584,7 @@ def sync_turnstile(
     """点击并轮询，直到 token 就绪或超时。"""
     deadline = time.time() + max(float(timeout), 0.0)
     click_attempted = False
+    attempt_logged = False
     last_click_round = -100
     round_index = 0
     spinner_logged = False
@@ -528,18 +604,27 @@ def sync_turnstile(
         ):
             # 勾上之后再点会取消。转圈和已勾选都只等页面自己跳走。
             if not spinner_logged:
-                _log(log, "Cloudflare 正在自动验证，等待完成而不点击")
+                if checkbox_checked(target):
+                    reason = "已勾选"
+                elif human_checkbox_challenge(target) and click_attempted:
+                    reason = "已点过"
+                else:
+                    reason = "转圈"
+                _log(log, f"Cloudflare 正在自动验证，等待完成而不点击（{reason}）")
                 spinner_logged = True
             time.sleep(min(POLL_INTERVAL, max(0.0, deadline - time.time())))
             round_index += 1
             continue
         if not click_attempted or (round_index - last_click_round >= CLICK_EVERY_ROUNDS):
             if not click_attempted:
-                _log(log, "尝试点击 Turnstile...")
+                if not attempt_logged:
+                    _log(log, "尝试点击 Turnstile...")
+                    attempt_logged = True
             else:
                 _log(log, "再次尝试点击 Turnstile...")
-            click_turnstile(target, log=log)
-            click_attempted = True
+            # 没点到不算数。控件晚出现时还要再点一次。
+            if click_turnstile(target, log=log):
+                click_attempted = True
             last_click_round = round_index
             time.sleep(min(CLICK_INTERVAL, max(0.0, deadline - time.time())))
             round_index += 1
