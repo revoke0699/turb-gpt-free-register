@@ -78,6 +78,29 @@ _INTERSTITIAL_TITLE_MARKERS = (
     "正在验证您是否是真人",
 )
 
+# 整页托管挑战只有转圈，没有复选框。点左侧会打在转圈上，把自动验证打断。
+_MANAGED_SPINNER_MARKERS = (
+    "verifying",
+    "verifiziere",
+    "vérification",
+    "checking your browser",
+    "just a moment",
+    "one moment",
+    "bitte warten",
+    "einen moment",
+    "正在验证",
+    "请稍候",
+)
+_CHECKBOX_MARKERS = (
+    "verify you are human",
+    "confirm you are human",
+    "i am human",
+    "ich bin ein mensch",
+    "bestätigen sie",
+    "确认您是真人",
+    "验证您是真人",
+)
+
 
 class CloudflareChallengeError(RuntimeError):
     """整页 Cloudflare 挑战未通过，继续提交没有意义。"""
@@ -322,6 +345,38 @@ def fill_turnstile_token(target: Any, token: str) -> int:
         return len(token)
 
 
+def _frame_visible_text(frame: Any) -> str:
+    try:
+        value = frame.evaluate(
+            "() => String((document.body && document.body.innerText) || '').slice(0, 400)"
+        )
+    except Exception:
+        return ""
+    if not isinstance(value, str):
+        return ""
+    return value
+
+
+def managed_spinner(target: Any) -> bool:
+    """Cloudflare 正在自动验证。这种页面没有复选框，等待即可。"""
+    page = playwright_page(target)
+    chunks: list[str] = []
+    if page is not None:
+        frame = _turnstile_frame(page)
+        if frame is not None:
+            chunks.append(_frame_visible_text(frame))
+        try:
+            chunks.append(str(page.title() or ""))
+        except Exception:
+            pass
+    text = "\n".join(chunks).lower()
+    if not text:
+        return False
+    if any(marker in text for marker in _CHECKBOX_MARKERS):
+        return False
+    return any(marker in text for marker in _MANAGED_SPINNER_MARKERS)
+
+
 def _frame_click_point(frame: Any) -> tuple[float, float]:
     height = 0.0
     try:
@@ -343,6 +398,9 @@ def _frame_click_point(frame: Any) -> tuple[float, float]:
 
 def click_turnstile(target: Any, log: Callable[[str], None] | None = None) -> bool:
     """点 Turnstile iframe 左侧复选框区域。frame 内点击失败时退到页面坐标。"""
+    if managed_spinner(target):
+        _log(log, "Cloudflare 正在自动验证，跳过点击")
+        return False
     page = playwright_page(target)
     if page is not None:
         frame = _turnstile_frame(page)
@@ -412,6 +470,7 @@ def sync_turnstile(
     click_attempted = False
     last_click_round = -100
     round_index = 0
+    spinner_logged = False
     while time.time() < deadline:
         token = read_turnstile_token(target)
         if token_ready(token):
@@ -423,6 +482,13 @@ def sync_turnstile(
         blocked = cloudflare_interstitial(target)
         if not present and not blocked:
             return ""
+        if managed_spinner(target):
+            if not spinner_logged:
+                _log(log, "Cloudflare 正在自动验证，等待完成而不点击")
+                spinner_logged = True
+            time.sleep(min(POLL_INTERVAL, max(0.0, deadline - time.time())))
+            round_index += 1
+            continue
         if not click_attempted or (round_index - last_click_round >= CLICK_EVERY_ROUNDS):
             if not click_attempted:
                 _log(log, "尝试点击 Turnstile...")
@@ -468,7 +534,7 @@ def poke_turnstile(
     target: Any,
     *,
     log: Callable[[str], None] | None = None,
-    give_up_after: float = 18.0,
+    give_up_after: float = 40.0,
 ) -> str:
     """等待跳转时轻点一次，避免每次都进入完整阻塞流程。"""
     state = getattr(target, "_turnstile_poke", None)

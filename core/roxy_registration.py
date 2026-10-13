@@ -188,7 +188,8 @@ def _safe_get(driver, url: str, *, timeout: int = 45, attempts: int = 2, accept_
             except Exception:
                 pass
             driver.get(url)
-            _settle_cloudflare(driver, timeout=12)
+            # 整页 “Verifying...” 经常超过 12 秒。没有挑战时 ensure_turnstile 会立刻返回。
+            _settle_cloudflare(driver, timeout=40)
             return
         except Exception as exc:
             from core.turnstile import CloudflareChallengeError
@@ -223,7 +224,7 @@ def _safe_get(driver, url: str, *, timeout: int = 45, attempts: int = 2, accept_
                         "%s 页面加载虽超时但 DOM 可用，继续流程：current=%s readyState=%s",
                         _log_prefix(driver), current[:180], ready or "-",
                     )
-                    _settle_cloudflare(driver, timeout=12)
+                    _settle_cloudflare(driver, timeout=40)
                     return
                 if attempt < attempts:
                     try:
@@ -1701,7 +1702,7 @@ def _wait_after_email_otp_submit(driver, timeout: int = 30) -> str:
 
 
 def _click_continue(driver) -> None:
-    _settle_cloudflare(driver, timeout=12)
+    _settle_cloudflare(driver, timeout=40)
     _click_any(driver, [
         "button[type='submit']",
         "//button[@data-dd-action-name='Continue']",

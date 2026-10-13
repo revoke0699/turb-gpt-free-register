@@ -16,13 +16,16 @@ from core.turnstile import (
 
 
 class _Frame:
-    def __init__(self, url, height=80, click_error=None):
+    def __init__(self, url, height=80, click_error=None, text=""):
         self.url = url
         self.clicks = []
         self.click_error = click_error
         self.height = height
+        self.text = text
 
-    def evaluate(self, _script):
+    def evaluate(self, script):
+        if "innerText" in str(script):
+            return getattr(self, "text", "")
         return {"w": 300, "h": self.height}
 
     def click(self, selector, position=None, timeout=None):
@@ -134,6 +137,35 @@ class TurnstileTests(unittest.TestCase):
     def test_german_security_verification_title_is_interstitial(self):
         page = _Page(title="Sicherheitsüberprüfung wird durchgeführt", url="https://auth.openai.com/email-verification")
         self.assertTrue(cloudflare_interstitial(page))
+
+    def test_verifying_spinner_is_not_clicked(self):
+        frame = _Frame(
+            "https://challenges.cloudflare.com/cdn-cgi/challenge-platform/turnstile",
+            text="Verifying...\nCloudflare\nPrivacy",
+        )
+        page = _Page(frames=[frame], url="https://chatgpt.com/auth/login")
+        with patch("core.turnstile.time.sleep"):
+            with self.assertRaises(CloudflareChallengeError):
+                sync_turnstile(page, timeout=0.2)
+        self.assertEqual(frame.clicks, [])
+
+    def test_german_verifying_spinner_is_not_clicked(self):
+        frame = _Frame(
+            "https://challenges.cloudflare.com/cdn-cgi/challenge-platform/turnstile",
+            text="Verifiziere...\nCloudflare",
+        )
+        page = _Page(frames=[frame], url="https://chatgpt.com/")
+        self.assertFalse(click_turnstile(page))
+        self.assertEqual(frame.clicks, [])
+
+    def test_human_checkbox_still_clicks(self):
+        frame = _Frame(
+            "https://challenges.cloudflare.com/cdn-cgi/challenge-platform/turnstile",
+            text="Verify you are human",
+        )
+        page = _Page(frames=[frame])
+        self.assertTrue(click_turnstile(page))
+        self.assertEqual(frame.clicks[0][0], "body")
 
     def test_security_verification_page_clicks_checkbox(self):
         frame = _Frame("https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/b/turnstile/if/ov2/av0/rcv")
