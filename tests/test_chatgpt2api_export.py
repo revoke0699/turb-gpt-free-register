@@ -36,13 +36,13 @@ def _storage(root: Path) -> dict:
 
 
 class ChatGPT2APIPayloadTests(unittest.TestCase):
-    def test_build_payload_includes_token_email_password_and_plan_without_proxy(self):
+    def test_build_payload_includes_token_email_password_plan_and_proxy_node(self):
         from core.chatgpt2api_export import build_chatgpt2api_account_payload
 
         payload = build_chatgpt2api_account_payload({
             "email": "user@example.com",
             "access_token": "eyJ-access",
-            "proxy_used": "socks5://127.0.0.1:7897",
+            "proxy_used": "socks5://user:pass@127.0.0.1:7897",
             "plan_type": "plus",
             "extra_json": json.dumps({
                 "registration_password": "Aa1!Bb2@Cc3#",
@@ -54,8 +54,36 @@ class ChatGPT2APIPayloadTests(unittest.TestCase):
         self.assertEqual(payload["password"], "Aa1!Bb2@Cc3#")
         self.assertEqual(payload["type"], "plus")
         self.assertEqual(payload["source_type"], "web")
-        self.assertNotIn("proxy", payload)
+        self.assertEqual(payload["proxy"], "socks5://user:pass@127.0.0.1:7897")
         self.assertNotIn("proxy_used", payload)
+
+    def test_build_payload_falls_back_to_extra_proxy_when_proxy_used_is_a_label(self):
+        from core.chatgpt2api_export import build_chatgpt2api_account_payload
+
+        payload = build_chatgpt2api_account_payload({
+            "email": "user@example.com",
+            "access_token": "eyJ-access",
+            "proxy_used": "skyvern:jp",
+            "extra_json": json.dumps({"proxy": "http://openai.task:token@resin:2260"}),
+        })
+        self.assertEqual(payload["proxy"], "http://openai.task:token@resin:2260")
+
+    def test_build_payload_omits_proxy_when_only_label_or_invalid_url(self):
+        from core.chatgpt2api_export import build_chatgpt2api_account_payload
+
+        label_only = build_chatgpt2api_account_payload({
+            "email": "user@example.com",
+            "access_token": "eyJ-access",
+            "proxy_used": "browser_use:jp",
+        })
+        self.assertNotIn("proxy", label_only)
+
+        with_path = build_chatgpt2api_account_payload({
+            "email": "user@example.com",
+            "access_token": "eyJ-access",
+            "proxy_used": "http://proxy.local:8080/path",
+        })
+        self.assertNotIn("proxy", with_path)
 
     def test_build_payload_returns_none_without_access_token(self):
         from core.chatgpt2api_export import build_chatgpt2api_account_payload
@@ -140,7 +168,7 @@ class ChatGPT2APIExportTests(unittest.TestCase):
         self.assertEqual(kwargs["headers"]["Authorization"], "Bearer admin-key")
         self.assertEqual(kwargs["json"]["accounts"][0]["access_token"], "eyJ-access")
         self.assertEqual(kwargs["json"]["accounts"][0]["password"], "Pw#12345")
-        self.assertNotIn("proxy", kwargs["json"]["accounts"][0])
+        self.assertEqual(kwargs["json"]["accounts"][0]["proxy"], "http://proxy.local:8080")
         self.assertNotIn("proxy_used", kwargs["json"]["accounts"][0])
         self.assertEqual(kwargs["timeout"], 15)
 

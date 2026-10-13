@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
 
@@ -80,6 +81,46 @@ def _normalize_plan_type(row: dict, extra: dict) -> str:
     return text[:32]
 
 
+_PROXY_NODE_SCHEMES = {"http", "https", "socks5", "socks5h"}
+
+
+def _chatgpt2api_proxy_node(value: object) -> str:
+    """返回 chatgpt2api 能收下的代理节点 URL。
+
+    号池把账号上的 proxy 当成自定义出口，非法地址会让整次导入返回 400。
+    环境标签（skyvern:jp）和带路径的地址留空，账号仍可上传。
+    """
+    raw = str(value or "").strip()
+    if not raw or any(char.isspace() for char in raw) or "://" not in raw:
+        return ""
+    try:
+        parsed = urlparse(raw)
+        host = parsed.hostname
+        port = parsed.port
+    except ValueError:
+        return ""
+    if (parsed.scheme or "").lower() not in _PROXY_NODE_SCHEMES:
+        return ""
+    if not host or parsed.netloc.endswith(":") or port == 0:
+        return ""
+    if parsed.path not in {"", "/"} or parsed.params or parsed.query or parsed.fragment:
+        return ""
+    return raw
+
+
+def _account_proxy_node(row: dict, extra: dict) -> str:
+    candidates = (
+        row.get("proxy_used"),
+        extra.get("proxy") if isinstance(extra.get("proxy"), str) else "",
+        row.get("proxy"),
+    )
+    for candidate in candidates:
+        node = _chatgpt2api_proxy_node(candidate)
+        if node:
+            return node
+    return ""
+
+
 def chatgpt2api_accounts_url(base: str) -> str:
     text = str(base or "").strip().rstrip("/")
     if not text:
@@ -111,6 +152,9 @@ def build_chatgpt2api_account_payload(row: dict | None) -> dict | None:
         payload["email"] = email
     if password:
         payload["password"] = password
+    proxy = _account_proxy_node(row, extra)
+    if proxy:
+        payload["proxy"] = proxy
     return payload
 
 

@@ -332,7 +332,7 @@ EDITABLE_FIELDS = [
     },
     {
         "key": "CHATGPT2API_AUTO_EXPORT", "file": "chatgpt2api.py", "type": "bool", "group": "功能开关",
-        "label": "注册后导入 chatgpt2api", "help": "注册成功后自动把 access_token 推到 chatgpt2api 号池；失败不影响注册结果",
+        "label": "注册后导入 chatgpt2api", "help": "注册成功后自动把 access_token 和该账号使用的代理节点推到 chatgpt2api 号池；失败不影响注册结果",
     },
     {
         "key": "ENABLE_HUMANIZE_DELAY", "file": "humanize.py", "type": "bool", "group": "人工节奏",
