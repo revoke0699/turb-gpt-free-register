@@ -6,6 +6,10 @@ from config.env_loader import apply_env_overrides
 # 基址或 Auth Key 为空时仍会跳过，不影响注册结果。
 CHATGPT2API_AUTO_EXPORT: bool = True
 
+# 勾选后，上传号池时带上该账号注册时使用的原始代理地址。
+# 关闭时不写 proxy 字段。环境标签等不能当出口的值仍会省略。
+CHATGPT2API_UPLOAD_PROXY: bool = False
+
 # chatgpt2api 服务地址，例如 http://127.0.0.1:3000
 CHATGPT2API_API_BASE: str = ""
 
@@ -21,6 +25,7 @@ CHATGPT2API_SOURCE_TYPE: str = "web"
 
 apply_env_overrides(globals(), {
     "CHATGPT2API_AUTO_EXPORT": "bool",
+    "CHATGPT2API_UPLOAD_PROXY": "bool",
     "CHATGPT2API_API_BASE": "str",
     "CHATGPT2API_AUTH_KEY": "str",
     "CHATGPT2API_API_TIMEOUT": "int",

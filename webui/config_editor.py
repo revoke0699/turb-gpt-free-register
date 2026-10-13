@@ -332,7 +332,11 @@ EDITABLE_FIELDS = [
     },
     {
         "key": "CHATGPT2API_AUTO_EXPORT", "file": "chatgpt2api.py", "type": "bool", "group": "功能开关",
-        "label": "注册后导入 chatgpt2api", "help": "注册成功后自动把 access_token 和该账号使用的代理节点推到 chatgpt2api 号池；失败不影响注册结果",
+        "label": "注册后导入 chatgpt2api", "help": "注册成功后自动把 access_token 推到 chatgpt2api 号池；是否带上代理由「上传代理IP」控制；失败不影响注册结果",
+    },
+    {
+        "key": "CHATGPT2API_UPLOAD_PROXY", "file": "chatgpt2api.py", "type": "bool", "group": "功能开关",
+        "label": "上传代理IP", "help": "勾选后，导入 chatgpt2api 时把该账号注册使用的原始代理地址写入 proxy 字段；不勾选则不上传代理。环境标签等不能当出口的值仍会省略",
     },
     {
         "key": "ENABLE_HUMANIZE_DELAY", "file": "humanize.py", "type": "bool", "group": "人工节奏",

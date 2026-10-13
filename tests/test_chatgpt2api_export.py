@@ -36,19 +36,32 @@ def _storage(root: Path) -> dict:
 
 
 class ChatGPT2APIPayloadTests(unittest.TestCase):
-    def test_build_payload_includes_token_email_password_plan_and_proxy_node(self):
+    def test_build_payload_omits_proxy_until_upload_switch_is_on(self):
         from core.chatgpt2api_export import build_chatgpt2api_account_payload
 
-        payload = build_chatgpt2api_account_payload({
+        row = {
             "email": "user@example.com",
             "access_token": "eyJ-access",
             "proxy_used": "socks5://user:pass@127.0.0.1:7897",
-            "plan_type": "plus",
-            "extra_json": json.dumps({
-                "registration_password": "Aa1!Bb2@Cc3#",
-                "proxy": "http://proxy.local:8080",
-            }),
-        })
+        }
+        with patch("core.chatgpt2api_export._cfg.CHATGPT2API_UPLOAD_PROXY", False):
+            payload = build_chatgpt2api_account_payload(row)
+        self.assertNotIn("proxy", payload)
+
+    def test_build_payload_includes_token_email_password_plan_and_proxy_node(self):
+        from core.chatgpt2api_export import build_chatgpt2api_account_payload
+
+        with patch("core.chatgpt2api_export._cfg.CHATGPT2API_UPLOAD_PROXY", True):
+            payload = build_chatgpt2api_account_payload({
+                "email": "user@example.com",
+                "access_token": "eyJ-access",
+                "proxy_used": "socks5://user:pass@127.0.0.1:7897",
+                "plan_type": "plus",
+                "extra_json": json.dumps({
+                    "registration_password": "Aa1!Bb2@Cc3#",
+                    "proxy": "http://proxy.local:8080",
+                }),
+            })
         self.assertEqual(payload["access_token"], "eyJ-access")
         self.assertEqual(payload["email"], "user@example.com")
         self.assertEqual(payload["password"], "Aa1!Bb2@Cc3#")
@@ -60,29 +73,30 @@ class ChatGPT2APIPayloadTests(unittest.TestCase):
     def test_build_payload_falls_back_to_extra_proxy_when_proxy_used_is_a_label(self):
         from core.chatgpt2api_export import build_chatgpt2api_account_payload
 
-        payload = build_chatgpt2api_account_payload({
-            "email": "user@example.com",
-            "access_token": "eyJ-access",
-            "proxy_used": "skyvern:jp",
-            "extra_json": json.dumps({"proxy": "http://openai.task:token@resin:2260"}),
-        })
+        with patch("core.chatgpt2api_export._cfg.CHATGPT2API_UPLOAD_PROXY", True):
+            payload = build_chatgpt2api_account_payload({
+                "email": "user@example.com",
+                "access_token": "eyJ-access",
+                "proxy_used": "skyvern:jp",
+                "extra_json": json.dumps({"proxy": "http://openai.task:token@resin:2260"}),
+            })
         self.assertEqual(payload["proxy"], "http://openai.task:token@resin:2260")
 
     def test_build_payload_omits_proxy_when_only_label_or_invalid_url(self):
         from core.chatgpt2api_export import build_chatgpt2api_account_payload
 
-        label_only = build_chatgpt2api_account_payload({
-            "email": "user@example.com",
-            "access_token": "eyJ-access",
-            "proxy_used": "browser_use:jp",
-        })
+        with patch("core.chatgpt2api_export._cfg.CHATGPT2API_UPLOAD_PROXY", True):
+            label_only = build_chatgpt2api_account_payload({
+                "email": "user@example.com",
+                "access_token": "eyJ-access",
+                "proxy_used": "browser_use:jp",
+            })
+            with_path = build_chatgpt2api_account_payload({
+                "email": "user@example.com",
+                "access_token": "eyJ-access",
+                "proxy_used": "http://proxy.local:8080/path",
+            })
         self.assertNotIn("proxy", label_only)
-
-        with_path = build_chatgpt2api_account_payload({
-            "email": "user@example.com",
-            "access_token": "eyJ-access",
-            "proxy_used": "http://proxy.local:8080/path",
-        })
         self.assertNotIn("proxy", with_path)
 
     def test_build_payload_returns_none_without_access_token(self):
@@ -147,6 +161,7 @@ class ChatGPT2APIExportTests(unittest.TestCase):
         with patch("core.chatgpt2api_export._cfg") as cfg, \
                 patch("core.chatgpt2api_export.requests.post", return_value=response) as posted:
             cfg.CHATGPT2API_AUTO_EXPORT = True
+            cfg.CHATGPT2API_UPLOAD_PROXY = True
             cfg.CHATGPT2API_API_BASE = "http://127.0.0.1:3000"
             cfg.CHATGPT2API_AUTH_KEY = "admin-key"
             cfg.CHATGPT2API_API_TIMEOUT = 15
@@ -183,6 +198,7 @@ class ChatGPT2APIExportTests(unittest.TestCase):
         with patch("core.chatgpt2api_export._cfg") as cfg, \
                 patch("core.chatgpt2api_export.requests.post", return_value=response):
             cfg.CHATGPT2API_AUTO_EXPORT = True
+            cfg.CHATGPT2API_UPLOAD_PROXY = False
             cfg.CHATGPT2API_API_BASE = "http://127.0.0.1:3000"
             cfg.CHATGPT2API_AUTH_KEY = "bad"
             cfg.CHATGPT2API_API_TIMEOUT = 10
@@ -194,6 +210,31 @@ class ChatGPT2APIExportTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["http_status"], 401)
+
+    def test_export_omits_proxy_when_upload_switch_off(self):
+        from core.chatgpt2api_export import export_account_to_chatgpt2api
+
+        response = MagicMock()
+        response.status_code = 200
+        response.text = '{"added":1,"skipped":0}'
+        response.json.return_value = {"added": 1, "skipped": 0, "errors": []}
+
+        with patch("core.chatgpt2api_export._cfg") as cfg, \
+                patch("core.chatgpt2api_export.requests.post", return_value=response) as posted:
+            cfg.CHATGPT2API_AUTO_EXPORT = True
+            cfg.CHATGPT2API_UPLOAD_PROXY = False
+            cfg.CHATGPT2API_API_BASE = "http://127.0.0.1:3000"
+            cfg.CHATGPT2API_AUTH_KEY = "admin-key"
+            cfg.CHATGPT2API_API_TIMEOUT = 10
+            cfg.CHATGPT2API_SOURCE_TYPE = "web"
+            result = export_account_to_chatgpt2api({
+                "email": "user@example.com",
+                "access_token": "eyJ-access",
+                "proxy_used": "http://user:pass@203.0.113.8:8080",
+            }, require_auto_export=False)
+
+        self.assertTrue(result["ok"])
+        self.assertNotIn("proxy", posted.call_args.kwargs["json"]["accounts"][0])
 
 
 class ChatGPT2APISaveHookTests(unittest.TestCase):
@@ -248,6 +289,10 @@ class ChatGPT2APIConfigTests(unittest.TestCase):
     def test_webui_exposes_chatgpt2api_settings(self):
         fields = {field["key"]: field for field in config_editor.EDITABLE_FIELDS}
         self.assertEqual(fields["CHATGPT2API_AUTO_EXPORT"]["type"], "bool")
+        upload_proxy = fields["CHATGPT2API_UPLOAD_PROXY"]
+        self.assertEqual(upload_proxy["type"], "bool")
+        self.assertEqual(upload_proxy["label"], "上传代理IP")
+        self.assertEqual(upload_proxy["group"], "功能开关")
         self.assertEqual(fields["CHATGPT2API_API_BASE"]["type"], "str")
         self.assertEqual(fields["CHATGPT2API_AUTH_KEY"]["type"], "str")
         self.assertTrue(fields["CHATGPT2API_AUTH_KEY"].get("secret"))

@@ -108,7 +108,16 @@ def _chatgpt2api_proxy_node(value: object) -> str:
     return raw
 
 
+def _upload_original_proxy_enabled() -> bool:
+    return bool(getattr(_cfg, "CHATGPT2API_UPLOAD_PROXY", False))
+
+
 def _account_proxy_node(row: dict, extra: dict) -> str:
+    """账号注册时实际使用的原始代理地址。
+
+    优先 proxy_used（注册落库的那条），再回退 extra / 行内 proxy。
+    只接受号池能当出口的节点 URL，环境标签留空，避免整次导入 400。
+    """
     candidates = (
         row.get("proxy_used"),
         extra.get("proxy") if isinstance(extra.get("proxy"), str) else "",
@@ -152,9 +161,10 @@ def build_chatgpt2api_account_payload(row: dict | None) -> dict | None:
         payload["email"] = email
     if password:
         payload["password"] = password
-    proxy = _account_proxy_node(row, extra)
-    if proxy:
-        payload["proxy"] = proxy
+    if _upload_original_proxy_enabled():
+        proxy = _account_proxy_node(row, extra)
+        if proxy:
+            payload["proxy"] = proxy
     return payload
 
 
