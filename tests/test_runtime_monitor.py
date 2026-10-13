@@ -158,6 +158,23 @@ class RuntimeMonitorTests(unittest.TestCase):
         delta = svc.get_runtime_snapshot(after_id=first["latest_log_id"])
         self.assertEqual([item["message"] for item in delta["logs"]], ["重试中"])
 
+    def test_restart_reconcile_clears_orphans_and_keeps_live_jobs(self):
+        pending = db.create_job("outlook", batch_id="old")
+        orphan = db.create_job("outlook", batch_id="old")
+        live = db.create_job("outlook", batch_id="live")
+        db.update_job(orphan["id"], status="running", email="orphan@example.com", started_at="2026-10-12T03:05:51")
+        db.update_job(live["id"], status="running", email="live@example.com", started_at="2026-10-12T11:02:23")
+        svc._ACTIVE_JOBS.add(int(live["id"]))
+        self.addCleanup(svc._ACTIVE_JOBS.discard, int(live["id"]))
+        with patch.object(svc, "_release_unconsumed_job_email") as release:
+            result = svc.reconcile_jobs_after_restart()
+        self.assertEqual(db.get_job(pending["id"])["status"], "cancelled")
+        self.assertEqual(db.get_job(orphan["id"])["status"], "stopped")
+        self.assertEqual(db.get_job(live["id"])["status"], "running")
+        self.assertEqual(result["cancelled"], [int(pending["id"])])
+        self.assertEqual(result["stopped"], [int(orphan["id"])])
+        release.assert_called_once()
+
     def test_stop_batch_cancels_pending_jobs(self):
         batch_id = "web-stop"
         pending = db.create_job("outlook", batch_id=batch_id)

@@ -926,6 +926,49 @@ def retry_job(job_id: int, workers: int | None = None, batch_id: str | None = No
     }
 
 
+def reconcile_jobs_after_restart() -> dict:
+    """进程启动时内存队列是空的，库里的 pending/running/stopping 都是重启残留。
+
+    仍登记在本进程 _ACTIVE_JOBS 里的任务不动，避免误伤已经开始的注册。
+    """
+    now_iso = datetime.now().isoformat(timespec="seconds")
+    stopped: list[int] = []
+    cancelled: list[int] = []
+    for job in db.list_jobs_by_statuses(("pending", "running", "stopping")):
+        job_id = int(job.get("id") or 0)
+        if job_id <= 0:
+            continue
+        with _STOP_LOCK:
+            if job_id in _ACTIVE_JOBS:
+                continue
+        status = str(job.get("status") or "")
+        if status == "pending":
+            db.update_job(
+                job_id,
+                status="cancelled",
+                completed_at=now_iso,
+                error="服务重启，排队任务已取消",
+            )
+            _append_job_log(job_id, "服务重启：任务尚未运行，已取消排队。")
+            cancelled.append(job_id)
+            continue
+        db.update_job(
+            job_id,
+            status="stopped",
+            completed_at=now_iso,
+            error="服务重启，任务实例已不存在",
+        )
+        _release_unconsumed_job_email(
+            str(job.get("email") or "").strip() or None,
+            "服务重启，任务实例已不存在",
+        )
+        _append_job_log(job_id, "服务重启：未找到运行中的任务实例，已标记为已停止。")
+        stopped.append(job_id)
+    if stopped or cancelled:
+        logger.warning("[Service] 启动清理残留任务：stopped=%s cancelled=%s", stopped, cancelled)
+    return {"stopped": stopped, "cancelled": cancelled}
+
+
 def cancel_pending_jobs() -> int:
     """取消尚未领取的次数，以及库里残留的 pending 任务。运行中的不动。"""
     cancelled = _cancel_batch_remaining()

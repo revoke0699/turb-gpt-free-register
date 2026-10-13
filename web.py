@@ -94,6 +94,14 @@ def main() -> None:
         raise SystemExit(2) from exc
 
     app = create_app(auth_code=args.auth_code)
+    from core.registration_service import reconcile_jobs_after_restart
+    cleaned = reconcile_jobs_after_restart()
+    if cleaned.get("stopped") or cleaned.get("cancelled"):
+        logger.warning(
+            "启动时已清理残留任务：停止 %s 个，取消排队 %s 个",
+            len(cleaned.get("stopped") or []),
+            len(cleaned.get("cancelled") or []),
+        )
     url = f"http://{'127.0.0.1' if args.host in ('0.0.0.0', '::') else args.host}:{args.port}"
     logger.info(f"WebUI 已启动：{url}")
     if is_generated_code():

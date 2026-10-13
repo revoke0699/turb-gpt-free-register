@@ -3163,6 +3163,21 @@ def list_jobs_page(limit: int = 50, offset: int = 0) -> dict:
         }
 
 
+def list_jobs_by_statuses(statuses: tuple[str, ...] | list[str]) -> list[dict]:
+    """按状态读取任务，不把整张任务表载入内存。"""
+    wanted = [str(item) for item in statuses if str(item or "").strip()]
+    if not wanted:
+        return []
+    _ensure_sqlite()
+    placeholders = ",".join("?" for _ in wanted)
+    with closing(_sqlite_conn()) as conn:
+        rows = conn.execute(
+            f"SELECT payload FROM registration_jobs WHERE status IN ({placeholders}) ORDER BY id",
+            tuple(wanted),
+        ).fetchall()
+    return [json.loads(row["payload"]) for row in rows]
+
+
 def job_status_counts() -> dict:
     """在 SQLite 中聚合任务状态，避免为统计目的加载全部任务 payload。"""
     _ensure_sqlite()
