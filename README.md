@@ -61,6 +61,7 @@ EMAIL_SOURCE = "outlook,generic_api,imap"
 ```
 
 - MailNest-迈巢：Outlook 临时邮箱
+- outlookEmail 自建服务：从项目随机领取邮箱并自动收码（`outlookemail`）
 
 ### Codex OAuth
 
@@ -265,6 +266,7 @@ cp .env.example .env
 - `QQ_IMAP_PASSWORD`
 - `CLOUDFLARE_API_KEY` / `CLOUDFLARE_CUSTOM_AUTH`（`EMAIL_SOURCE=cloudflare` 时）
 - `REMAIL_API_KEY`（`EMAIL_SOURCE=remail` 时）
+- `OUTLOOKEMAIL_PASSWORD`（`EMAIL_SOURCE=outlookemail` 时）
 - `CPA_MANAGEMENT_KEY`
 - `SMS_API_KEY`
 - `L_ADMIN_AUTH_CODE`
@@ -435,6 +437,23 @@ REMAIL_SUPPLY_POLICY=public_only
 `REMAIL_SERVICE_MODE` 默认为 `purchase`（长效购买，可重复收件），也可改为 `code`（短效接码）。
 `REMAIL_SUPPLY_POLICY` 默认为 `public_only`，也可改为 `private_first`。每个注册任务会创建一个
 对应模式的订单，验证码通过 `/v1/pickup` 获取；Remail 订单余额和对应项目库存需可用。
+
+#### outlookEmail 自建服务
+
+接口文档：[https://github.com/assast/outlookEmail/blob/main/docs/api.md](https://github.com/assast/outlookEmail/blob/main/docs/api.md)。
+注册前先在自建服务里把邮箱放进项目（默认项目标识 `gpt`）。任务开始时按项目随机领取，
+注册成功后标记已使用；失败则释放回待领取，或在创建账号已确认时标记失败。
+
+在 WebUI「配置 → 邮箱 / OTP」的 outlookEmail 分组填写服务地址和 Web 登录密码，然后设置：
+
+```dotenv
+USE_EMAIL_SERVICE=True
+EMAIL_SOURCE=outlookemail
+OUTLOOKEMAIL_API_BASE=http://127.0.0.1:5000
+OUTLOOKEMAIL_PASSWORD=你的登录密码
+OUTLOOKEMAIL_PROJECT_KEY=gpt
+OUTLOOKEMAIL_LEASE_SECONDS=1800
+```
 
 ---
 

@@ -521,6 +521,18 @@ def save_account_data(
         codex_status=codex_status,
         codex_error=codex_error,
     )
+    # 账号已经落库后再通知自建服务消费租约。落库失败时邮箱仍可释放回项目池。
+    if str(email_source or "").strip().lower() == "outlookemail":
+        try:
+            from core.outlookemail_client import release_account
+
+            release_account(email, status="used", note="注册成功")
+        except Exception as exc:
+            logger.warning(
+                "[Save] 标记 outlookEmail 邮箱已使用失败：%s: %s",
+                type(exc).__name__,
+                str(exc)[:180],
+            )
     batch_folder = _append_batch_archive(
         row_id=row_id,
         email=email,

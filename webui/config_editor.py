@@ -369,7 +369,7 @@ EDITABLE_FIELDS = [
     },
     {
         "key": "EMAIL_SOURCE", "file": "email.py", "type": "str", "group": "邮箱 / OTP",
-        "label": "邮箱来源", "help": "可填单个或多个，逗号分隔并按顺序兜底：outlook,generic_api,imap,cloudflare_domain,cloudflare,gptmail,mailnest,cloudmail,remail",
+        "label": "邮箱来源", "help": "可填单个或多个，逗号分隔并按顺序兜底：outlook,generic_api,imap,cloudflare_domain,cloudflare,gptmail,mailnest,cloudmail,remail,outlookemail",
     },
     {
         "key": "IMAP_MAILBOX", "file": "email.py", "type": "str", "group": "邮箱 / OTP",
@@ -452,6 +452,24 @@ EDITABLE_FIELDS = [
     {
         "key": "MAIL_NEST_PROJECT_CODE", "file": "email.py", "type": "str", "group": "邮箱 / OTP",
         "label": "MailNest 项目代码", "help": "项目代码 默认 chatgpt001 获取页面 mailnest.top/buy-email",
+    },
+    {
+        "key": "OUTLOOKEMAIL_API_BASE", "file": "email.py", "type": "str", "group": "邮箱 / OTP",
+        "label": "outlookEmail 地址", "help": "自建 outlookEmail 根地址，如 http://127.0.0.1:5000；选择 outlookemail 时必填",
+        "storage": "env",
+    },
+    {
+        "key": "OUTLOOKEMAIL_PASSWORD", "file": "email.py", "type": "str", "group": "邮箱 / OTP",
+        "label": "outlookEmail 登录密码", "help": "自建服务 Web 登录密码，用于领取项目邮箱；保存在 .env",
+        "storage": "env", "secret": True,
+    },
+    {
+        "key": "OUTLOOKEMAIL_PROJECT_KEY", "file": "email.py", "type": "str", "group": "邮箱 / OTP",
+        "label": "outlookEmail 项目标识", "help": "项目管理中的 project_key，默认 gpt。邮箱需先放入该项目",
+    },
+    {
+        "key": "OUTLOOKEMAIL_LEASE_SECONDS", "file": "email.py", "type": "int", "group": "邮箱 / OTP",
+        "label": "outlookEmail 领取租期(秒)", "help": "领取后保留邮箱的秒数，默认 1800，最大 3600",
     },
     {
         "key": "CLOUDMAIL_API_BASE", "file": "email.py", "type": "str", "group": "邮箱 / OTP",

@@ -384,6 +384,19 @@ def _run(account_id: int, source: str) -> dict:
             material_line=email_material_line(new_email, source),
         )
         _append_log(account_id, f"本地账号更新成功：current_email={new_email}，旧 AT 已清空，cost={_cost(db_started)}")
+        if source == "outlookemail":
+            try:
+                from core.outlookemail_client import release_account
+
+                release_account(new_email, status="used", note="换绑成功")
+                _append_log(account_id, f"outlookEmail 邮箱已标记使用：email={new_email}")
+            except Exception as exc:
+                logger.warning(
+                    "[邮箱换绑] 标记 outlookEmail 邮箱已使用失败 account_id=%s: %s",
+                    account_id,
+                    str(exc)[:180],
+                )
+                _append_log(account_id, f"outlookEmail 标记已使用失败：{type(exc).__name__}: {str(exc)[:180]}")
         # 抓包显示 verify 后旧 AT 会立刻 401，但当前会话中的 __cf_bm、OAuth
         # Cookie 和出口连续性仍然有效。优先在该会话内重新登录，避免另建会话后
         # `/api/auth/csrf` 被 CF 403；原会话失败时再退回后台查活队列。

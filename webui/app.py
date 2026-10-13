@@ -361,8 +361,8 @@ def create_app(auth_code: str | None = None) -> Flask:
         from core.email_provider import parse_email_sources
         pool = {"total": 0, "available": 0, "used": 0, "failed": 0}
         for src in parse_email_sources(_email_cfg.EMAIL_SOURCE):
-            # GPTMail/MailNest/CloudMail 地址按需生成，不属于本地邮箱池。
-            if src in ("gptmail", "mailnest", "cloudmail", "cloudflare"):
+            # 远程临时邮箱按需领取，不属于本地邮箱池。
+            if src in ("gptmail", "mailnest", "cloudmail", "cloudflare", "remail", "outlookemail"):
                 continue
             one = (
                 db.generic_api_email_pool_summary() if src == "generic_api"
@@ -620,7 +620,7 @@ def create_app(auth_code: str | None = None) -> Flask:
         """给单个账号排队换绑邮箱。Body {source}."""
         data = request.get_json(silent=True) or {}
         source = str(data.get("source") or "").strip().lower()
-        allowed = {"outlook", "generic_api", "imap", "cloudflare_domain", "cloudflare", "gptmail", "mailnest", "cloudmail", "remail"}
+        allowed = {"outlook", "generic_api", "imap", "cloudflare_domain", "cloudflare", "gptmail", "mailnest", "cloudmail", "remail", "outlookemail"}
         if source not in allowed:
             return jsonify({"ok": False, "error": "请选择有效的邮箱来源"}), 400
         acc = db.get_account(acc_id)
@@ -639,7 +639,7 @@ def create_app(auth_code: str | None = None) -> Flask:
         data = request.get_json(silent=True) or {}
         ids = data.get("account_ids") or data.get("ids") or []
         source = str(data.get("source") or "").strip().lower()
-        allowed = {"outlook", "generic_api", "imap", "cloudflare_domain", "cloudflare", "gptmail", "mailnest", "cloudmail", "remail"}
+        allowed = {"outlook", "generic_api", "imap", "cloudflare_domain", "cloudflare", "gptmail", "mailnest", "cloudmail", "remail", "outlookemail"}
         if source not in allowed:
             return jsonify({"ok": False, "error": "请选择有效的邮箱来源"}), 400
         if not isinstance(ids, list) or not ids:
@@ -2710,7 +2710,26 @@ def create_app(auth_code: str | None = None) -> Flask:
                     "ok": False,
                     "error": "Remail 服务模式只能填写 code 或 purchase（配置 → 邮箱 / OTP）。",
                 }), 400
-        if "gptmail" in sources or "mailnest" in sources or "cloudmail" in sources or "remail" in sources or "cloudflare" in sources:
+        if "outlookemail" in sources:
+            api_base = str(getattr(_email_cfg, "OUTLOOKEMAIL_API_BASE", "") or "").strip()
+            password = str(getattr(_email_cfg, "OUTLOOKEMAIL_PASSWORD", "") or "").strip()
+            project_key = str(getattr(_email_cfg, "OUTLOOKEMAIL_PROJECT_KEY", "") or "").strip()
+            if not api_base:
+                return jsonify({
+                    "ok": False,
+                    "error": "已选择 outlookemail 邮箱来源，请填写 outlookEmail 地址（配置 → 邮箱 / OTP）。",
+                }), 400
+            if not password:
+                return jsonify({
+                    "ok": False,
+                    "error": "已选择 outlookemail 邮箱来源，请填写 outlookEmail 登录密码（配置 → 邮箱 / OTP）。",
+                }), 400
+            if not project_key:
+                return jsonify({
+                    "ok": False,
+                    "error": "已选择 outlookemail 邮箱来源，请填写 outlookEmail 项目标识（配置 → 邮箱 / OTP）。",
+                }), 400
+        if "gptmail" in sources or "mailnest" in sources or "cloudmail" in sources or "remail" in sources or "cloudflare" in sources or "outlookemail" in sources:
             # 临时邮箱在任务开始时动态生成，不需要本地邮箱池容量提示。
             warning = ""
         elif "cloudflare_domain" in sources:
