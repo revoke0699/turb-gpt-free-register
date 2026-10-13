@@ -292,7 +292,7 @@ class ChatGPT2APIConfigTests(unittest.TestCase):
         upload_proxy = fields["CHATGPT2API_UPLOAD_PROXY"]
         self.assertEqual(upload_proxy["type"], "bool")
         self.assertEqual(upload_proxy["label"], "上传代理IP")
-        self.assertEqual(upload_proxy["group"], "功能开关")
+        self.assertEqual(upload_proxy["group"], "chatgpt2api")
         self.assertEqual(fields["CHATGPT2API_API_BASE"]["type"], "str")
         self.assertEqual(fields["CHATGPT2API_AUTH_KEY"]["type"], "str")
         self.assertTrue(fields["CHATGPT2API_AUTH_KEY"].get("secret"))
