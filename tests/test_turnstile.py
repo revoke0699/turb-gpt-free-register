@@ -16,16 +16,20 @@ from core.turnstile import (
 
 
 class _Frame:
-    def __init__(self, url, height=80, click_error=None, text=""):
+    def __init__(self, url, height=80, click_error=None, text="", checked=False):
         self.url = url
         self.clicks = []
         self.click_error = click_error
         self.height = height
         self.text = text
+        self.checked = checked
 
     def evaluate(self, script):
-        if "innerText" in str(script):
-            return getattr(self, "text", "")
+        script = str(script)
+        if "checkbox" in script:
+            return {"text": self.text, "checked": self.checked}
+        if "innerText" in script:
+            return self.text
         return {"w": 300, "h": self.height}
 
     def click(self, selector, position=None, timeout=None):
@@ -157,6 +161,27 @@ class TurnstileTests(unittest.TestCase):
         page = _Page(frames=[frame], url="https://chatgpt.com/")
         self.assertFalse(click_turnstile(page))
         self.assertEqual(frame.clicks, [])
+
+    def test_checked_human_box_is_not_clicked_again(self):
+        frame = _Frame(
+            "https://challenges.cloudflare.com/cdn-cgi/challenge-platform/turnstile",
+            text="Bestätigen Sie, dass Sie ein Mensch sind",
+            checked=True,
+        )
+        page = _Page(frames=[frame], url="https://chatgpt.com/cdn-cgi/challenge-platform/h/g/orchestrate/chl_page")
+        self.assertFalse(click_turnstile(page))
+        self.assertEqual(frame.clicks, [])
+
+    def test_human_checkbox_is_clicked_only_once(self):
+        frame = _Frame(
+            "https://challenges.cloudflare.com/cdn-cgi/challenge-platform/turnstile",
+            text="Bestätigen Sie, dass Sie ein Mensch sind",
+        )
+        page = _Page(frames=[frame], url="https://chatgpt.com/cdn-cgi/challenge-platform/h/g/orchestrate/chl_page")
+        with patch("core.turnstile.time.sleep"):
+            with self.assertRaises(CloudflareChallengeError):
+                sync_turnstile(page, timeout=0.2)
+        self.assertEqual(len(frame.clicks), 1)
 
     def test_human_checkbox_still_clicks(self):
         frame = _Frame(

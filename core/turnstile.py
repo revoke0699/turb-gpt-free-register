@@ -345,36 +345,77 @@ def fill_turnstile_token(target: Any, token: str) -> int:
         return len(token)
 
 
-def _frame_visible_text(frame: Any) -> str:
+_FRAME_STATE_JS = """() => {
+  const text = String((document.body && document.body.innerText) || '').slice(0, 400);
+  const findBox = (root) => {
+    if (!root || !root.querySelector) return null;
+    const box = root.querySelector('input[type="checkbox"], [role="checkbox"]');
+    if (box) return box;
+    const nodes = root.querySelectorAll ? root.querySelectorAll('*') : [];
+    for (const el of nodes) {
+      if (el.shadowRoot) {
+        const found = findBox(el.shadowRoot);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+  const box = findBox(document);
+  const checked = !!(box && (box.checked || String(box.getAttribute('aria-checked') || '').toLowerCase() === 'true'));
+  return {text, checked};
+}"""
+
+
+def _frame_challenge_state(frame: Any) -> dict:
     try:
-        value = frame.evaluate(
-            "() => String((document.body && document.body.innerText) || '').slice(0, 400)"
-        )
+        value = frame.evaluate(_FRAME_STATE_JS)
     except Exception:
-        return ""
-    if not isinstance(value, str):
-        return ""
-    return value
+        return {"text": "", "checked": False}
+    if isinstance(value, str):
+        return {"text": value, "checked": False}
+    if isinstance(value, dict) and ("text" in value or "checked" in value):
+        return {"text": str(value.get("text") or ""), "checked": bool(value.get("checked"))}
+    return {"text": "", "checked": False}
 
 
-def managed_spinner(target: Any) -> bool:
-    """Cloudflare 正在自动验证。这种页面没有复选框，等待即可。"""
+def _frame_visible_text(frame: Any) -> str:
+    return str(_frame_challenge_state(frame).get("text") or "")
+
+
+def _challenge_snapshot(target: Any) -> dict:
     page = playwright_page(target)
     chunks: list[str] = []
+    checked = False
     if page is not None:
         frame = _turnstile_frame(page)
         if frame is not None:
-            chunks.append(_frame_visible_text(frame))
+            state = _frame_challenge_state(frame)
+            chunks.append(str(state.get("text") or ""))
+            checked = bool(state.get("checked"))
         try:
             chunks.append(str(page.title() or ""))
         except Exception:
             pass
-    text = "\n".join(chunks).lower()
+    return {"text": "\n".join(chunks).lower(), "checked": checked}
+
+
+def managed_spinner(target: Any) -> bool:
+    """Cloudflare 正在自动验证。这种页面没有复选框，等待即可。"""
+    text = _challenge_snapshot(target)["text"]
     if not text:
         return False
     if any(marker in text for marker in _CHECKBOX_MARKERS):
         return False
     return any(marker in text for marker in _MANAGED_SPINNER_MARKERS)
+
+
+def human_checkbox_challenge(target: Any) -> bool:
+    text = _challenge_snapshot(target)["text"]
+    return any(marker in text for marker in _CHECKBOX_MARKERS)
+
+
+def checkbox_checked(target: Any) -> bool:
+    return bool(_challenge_snapshot(target)["checked"])
 
 
 def _frame_click_point(frame: Any) -> tuple[float, float]:
@@ -398,7 +439,7 @@ def _frame_click_point(frame: Any) -> tuple[float, float]:
 
 def click_turnstile(target: Any, log: Callable[[str], None] | None = None) -> bool:
     """点 Turnstile iframe 左侧复选框区域。frame 内点击失败时退到页面坐标。"""
-    if managed_spinner(target):
+    if managed_spinner(target) or checkbox_checked(target):
         _log(log, "Cloudflare 正在自动验证，跳过点击")
         return False
     page = playwright_page(target)
@@ -482,7 +523,10 @@ def sync_turnstile(
         blocked = cloudflare_interstitial(target)
         if not present and not blocked:
             return ""
-        if managed_spinner(target):
+        if managed_spinner(target) or checkbox_checked(target) or (
+            human_checkbox_challenge(target) and click_attempted
+        ):
+            # 勾上之后再点会取消。转圈和已勾选都只等页面自己跳走。
             if not spinner_logged:
                 _log(log, "Cloudflare 正在自动验证，等待完成而不点击")
                 spinner_logged = True

@@ -661,9 +661,12 @@ def build_cloak_driver(proxy: str | None = None) -> tuple[CloakSeleniumDriver, C
     # geoip=True 交给内核根据当前出口 IP 自动匹配 timezone/locale/WebRTC。
     # 之前只有显式 proxy_url 时才开启；如果用户走系统代理/VPN/透明代理，代码层面
     # 看不到 proxy_url，会误关 geoip，导致语言/时区不跟随出口。这里改为完全尊重配置。
+    # Docker 里 humanize 会在提交后的跨源跳转里把内容进程打崩。
+    # 与 Camoufox 一样，容器内忽略 CLOAK_HUMANIZE=True。
+    humanize = False if running_in_docker() else bool(getattr(_cfg, "CLOAK_HUMANIZE", True))
     opts = {
         "headless": bool(getattr(_cfg, "CLOAK_HEADLESS", False)),
-        "humanize": bool(getattr(_cfg, "CLOAK_HUMANIZE", True)),
+        "humanize": humanize,
         "geoip": bool(getattr(_cfg, "CLOAK_GEOIP", True)),
     }
     if locale_opts.get("locale"):
